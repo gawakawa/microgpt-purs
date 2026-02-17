@@ -1,0 +1,32 @@
+name: "CI"
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GH_TOKEN }}
+
+      - name: Format check
+        run: |
+          nix fmt -- --no-cache
+          git diff --exit-code
+
+      - name: Build
+        run: nix build
+
+      - name: Flake check
+        run: nix flake check
