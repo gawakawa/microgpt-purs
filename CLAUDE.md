@@ -4,7 +4,7 @@
 
 - `nix fmt` - Format code
 - `nix flake check` - Run checks (format, lint)
-- `nix build` - Build the project
+- `nix build -o output .#output` - Build and link compiled modules to `output/` for LSP support
 
 ## MCP
 
