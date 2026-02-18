@@ -4,7 +4,7 @@ _: {
     {
       apps.default = {
         type = "app";
-        program = "${config.packages.default}/bin/hello";
+        program = "${config.packages.default}/bin/microgpt";
       };
     };
 }

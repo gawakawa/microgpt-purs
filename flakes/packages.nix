@@ -71,7 +71,7 @@
       ciPackages = with pkgs; [ nodejs ];
 
       packages = with ps; {
-        default = app { name = "hello"; };
+        default = app { name = "microgpt"; };
         bundle = bundle { };
         output = output { };
         ci = pkgs.buildEnv {
