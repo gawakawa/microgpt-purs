@@ -24,6 +24,13 @@
           "effect"
           "prelude"
           "ursi.debug"
+          # file reading and shuffling
+          "aff"
+          "arrays"
+          "node-buffer"
+          "node-fs"
+          "shuffle"
+          "strings"
         ];
 
         test-dependencies = [
