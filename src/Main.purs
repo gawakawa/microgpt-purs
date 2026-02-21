@@ -1,4 +1,4 @@
-module Main (initDataset, tokenize) where
+module Main where
 
 import Prelude
 
