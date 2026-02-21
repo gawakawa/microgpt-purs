@@ -8,7 +8,7 @@ import Data.String (Pattern(..), null, split, trim)
 import Effect (Effect)
 import Effect.Aff (launchAff_)
 import Effect.Class (liftEffect)
-import Effect.Console (log)
+import Debug (log)
 import Random.LCG (randomSeed)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile)
@@ -19,4 +19,5 @@ main = launchAff_ do
   let docs = filter (not <<< null) $ trim <$> split (Pattern "\n") content
   seed <- liftEffect randomSeed
   shuffled <- liftEffect $ evalGenT (shuffle docs) { newSeed: seed, size: 0 }
-  liftEffect $ log $ "num docs: " <> show (length shuffled)
+  let _ = log $ "num docs: " <> show (length shuffled)
+  pure unit
