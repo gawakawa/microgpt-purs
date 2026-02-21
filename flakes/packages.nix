@@ -29,7 +29,8 @@
           "arrays"
           "node-buffer"
           "node-fs"
-          "shuffle"
+          "generate-values"
+          "lcg"
           "strings"
         ];
 
