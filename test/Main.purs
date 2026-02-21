@@ -2,14 +2,48 @@ module Test.Main where
 
 import Prelude
 
+import Data.Array (length, sort)
 import Effect (Effect)
-import Main (tokenize)
+import Main (initDataset, tokenize)
+import Random.LCG (Seed, mkSeed)
 import Test.Unit (suite, test)
 import Test.Unit.Main (runTest)
 import Test.Unit.Assert as Assert
 
+seed :: Seed
+seed = mkSeed 42
+
 main :: Effect Unit
 main = runTest do
+  suite "initDataset" do
+    test "empty string returns empty array" do
+      Assert.equal [] (initDataset seed "")
+    test "newlines only returns empty array" do
+      Assert.equal [] (initDataset seed "\n\n\n")
+    test "blank lines are removed" do
+      let result = initDataset seed "foo\n\n  \nbar\n"
+      Assert.equal 2 (length result)
+    test "deterministic with same seed" do
+      let
+        input =
+          """
+          x
+          y
+          z
+          """
+        a = initDataset seed input
+        b = initDataset seed input
+      Assert.equal a b
+    test "elements are preserved" do
+      let
+        input =
+          """
+          cherry
+          apple
+          banana
+          """
+        result = initDataset seed input
+      Assert.equal [ "apple", "banana", "cherry" ] (sort result)
   suite "tokenize" do
     test "empty input produces single BOS" do
       Assert.equal [ 0 ] (tokenize [])

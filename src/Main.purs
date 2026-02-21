@@ -1,8 +1,8 @@
-module Main where
+module Main (initDataset, tokenize) where
 
 import Prelude
 
-import Control.Monad.Gen.Trans (evalGenT, shuffle)
+import Control.Monad.Gen.Trans (evalGen, shuffle)
 import Data.Array (concatMap, filter, length, nub)
 import Data.Foldable (surroundMap)
 import Data.Char (toCharCode)
@@ -11,7 +11,7 @@ import Data.String.CodeUnits (toCharArray)
 import Effect (Effect)
 import Effect.Aff (launchAff_)
 import Effect.Class (liftEffect)
-import Random.LCG (randomSeed)
+import Random.LCG (Seed, randomSeed)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile)
 
@@ -23,10 +23,16 @@ tokenize docs = surroundMap [ bos ] (map encode <<< toCharArray) docs
   where
   bos = length $ nub $ concatMap toCharArray docs
 
+initDataset :: Seed -> String -> Array String
+initDataset seed content = evalGen (shuffle docs) { newSeed: seed, size: 0 }
+  where
+
+  docs :: Array String
+  docs = filter (not <<< null) $ trim <$> split (Pattern "\n") content
+
 main :: Effect Unit
 main = launchAff_ do
   content <- readTextFile UTF8 "src/input.txt"
-  let docs = filter (not <<< null) $ trim <$> split (Pattern "\n") content
   seed <- liftEffect randomSeed
-  shuffled <- liftEffect $ evalGenT (shuffle docs) { newSeed: seed, size: 0 }
+  let dataset = initDataset seed content
   pure unit
