@@ -26,7 +26,6 @@ tokenize docs = surroundMap [ bos ] (map encode <<< toCharArray) docs
 initDataset :: Seed -> String -> Array String
 initDataset seed content = evalGen (shuffle docs) { newSeed: seed, size: 0 }
   where
-
   docs :: Array String
   docs = filter (not <<< null) $ trim <$> split (Pattern "\n") content
 
