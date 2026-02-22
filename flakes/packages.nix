@@ -27,6 +27,7 @@
           "generate-values"
           "lcg"
           "node-buffer"
+          "numbers"
           "node-fs"
           "prelude"
           "strings"

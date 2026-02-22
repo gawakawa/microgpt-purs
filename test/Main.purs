@@ -78,6 +78,26 @@ main = runTest do
       Assert.equal
         (Mul { val: 15.0, grad: 1.0 } (Leaf { val: 3.0, grad: 5.0 }) (Leaf { val: 5.0, grad: 3.0 }))
         (backward (Mul 15.0 (Leaf 3.0) (Leaf 5.0)))
+    test "pow" do
+      Assert.equal
+        (Pow { val: 9.0, grad: 1.0 } (Leaf { val: 3.0, grad: 6.0 }) 2.0)
+        (backward (Pow 9.0 (Leaf 3.0) 2.0))
+    test "exp" do
+      Assert.equal
+        (Exp { val: 1.0, grad: 1.0 } (Leaf { val: 0.0, grad: 1.0 }))
+        (backward (Exp 1.0 (Leaf 0.0)))
+    test "log" do
+      Assert.equal
+        (Log { val: 0.0, grad: 1.0 } (Leaf { val: 1.0, grad: 1.0 }))
+        (backward (Log 0.0 (Leaf 1.0)))
+    test "relu positive" do
+      Assert.equal
+        (Relu { val: 5.0, grad: 1.0 } (Leaf { val: 5.0, grad: 1.0 }))
+        (backward (Relu 5.0 (Leaf 5.0)))
+    test "relu negative" do
+      Assert.equal
+        (Relu { val: 0.0, grad: 1.0 } (Leaf { val: -3.0, grad: 0.0 }))
+        (backward (Relu 0.0 (Leaf (-3.0))))
     test "nested" do
       Assert.equal
         ( Add { val: 8.0, grad: 1.0 }
