@@ -20,18 +20,17 @@
 
       ps = purs-nix.purs {
         dependencies = [
-          "console"
-          "effect"
-          "prelude"
-          "ursi.debug"
-          # file reading and shuffling
           "aff"
           "arrays"
-          "node-buffer"
-          "node-fs"
+          "console"
+          "effect"
           "generate-values"
           "lcg"
+          "node-buffer"
+          "node-fs"
+          "prelude"
           "strings"
+          "ursi.debug"
         ];
 
         test-dependencies = [

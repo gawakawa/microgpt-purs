@@ -5,7 +5,7 @@ import Prelude
 import Data.Array (length, replicate, sort)
 import Data.String.Common (joinWith)
 import Effect (Effect)
-import Main (initDataset, tokenize)
+import Main (Tree(..), backward, initDataset, tokenize)
 import Random.LCG (Seed, mkSeed)
 import Test.Unit (suite, test)
 import Test.Unit.Main (runTest)
@@ -50,6 +50,7 @@ main = runTest do
         input = joinWith "\n" (replicate 32000 "name")
         result = initDataset seed input
       Assert.equal 32000 (length result)
+
   suite "tokenize" do
     test "empty input produces single BOS" do
       Assert.equal [ 0 ] (tokenize [])
@@ -63,3 +64,24 @@ main = runTest do
       Assert.equal [ 2, 0, 0, 1, 2 ] (tokenize [ "aab" ])
     test "vocab is sorted alphabetically" do
       Assert.equal [ 2, 2, 0, 2 ] (tokenize [ "ca" ])
+
+  suite "backward" do
+    test "leaf" do
+      Assert.equal
+        (Leaf { val: 5.0, grad: 1.0 })
+        (backward (Leaf 5.0))
+    test "add" do
+      Assert.equal
+        (Add { val: 8.0, grad: 1.0 } (Leaf { val: 3.0, grad: 1.0 }) (Leaf { val: 5.0, grad: 1.0 }))
+        (backward (Add 8.0 (Leaf 3.0) (Leaf 5.0)))
+    test "mul" do
+      Assert.equal
+        (Mul { val: 15.0, grad: 1.0 } (Leaf { val: 3.0, grad: 5.0 }) (Leaf { val: 5.0, grad: 3.0 }))
+        (backward (Mul 15.0 (Leaf 3.0) (Leaf 5.0)))
+    test "nested" do
+      Assert.equal
+        ( Add { val: 8.0, grad: 1.0 }
+            (Mul { val: 6.0, grad: 1.0 } (Leaf { val: 2.0, grad: 3.0 }) (Leaf { val: 3.0, grad: 2.0 }))
+            (Leaf { val: 2.0, grad: 1.0 })
+        )
+        (backward (Add 8.0 (Mul 6.0 (Leaf 2.0) (Leaf 3.0)) (Leaf 2.0)))
