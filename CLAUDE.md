@@ -17,3 +17,7 @@ Micro GPT implementation in PureScript (learning exercise based on Karpathy's mi
 ## MCP
 
 - **pursuit-mcp**: Search PureScript functions, types, and documentation on Pursuit
+  1. Search by type signature first (e.g. `Array a -> Int`)
+  2. Refine the type query to narrow down results
+  3. If multiple similar functions are found, search for a promising one by name to get its details
+  4. Only search by name when the type is completely unknown
