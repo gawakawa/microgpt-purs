@@ -16,7 +16,16 @@
     let
       pkgs = import inputs.nixpkgs { inherit system; };
 
-      purs-nix = inputs.purs-nix { inherit system; };
+      purs-nix = inputs.purs-nix {
+        inherit system;
+        overlays = [
+          (_: _: {
+            hylograph-graph = {
+              src.registry.version = "0.1.0";
+            };
+          })
+        ];
+      };
 
       ps = purs-nix.purs {
         dependencies = [
@@ -25,6 +34,7 @@
           "console"
           "effect"
           "generate-values"
+          "hylograph-graph"
           "lcg"
           "node-buffer"
           "numbers"

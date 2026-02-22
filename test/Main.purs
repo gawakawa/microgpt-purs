@@ -3,13 +3,44 @@ module Test.Main where
 import Prelude
 
 import Data.Array (length, replicate, sort)
+import Data.Map as Map
 import Data.String.Common (joinWith)
+import Data.Tuple.Nested (type (/\), (/\))
+import Data.Graph.Weighted (fromEdges)
+import Data.Graph.Weighted.DAG (DAG, unsafeFromWeightedDigraph)
 import Effect (Effect)
-import Main (Tree(..), backward, initDataset, tokenize)
+import Main (Expr(..), GradMap, backward, initDataset, tokenize)
 import Random.LCG (Seed, mkSeed)
 import Test.Unit (suite, test)
 import Test.Unit.Main (runTest)
 import Test.Unit.Assert as Assert
+
+buildDag :: Expr Number -> DAG (Expr Number) Unit
+buildDag root = unsafeFromWeightedDigraph $ fromEdges (collectEdges root)
+  where
+  collectEdges :: Expr Number -> Array { source :: Expr Number, target :: Expr Number, weight :: Unit }
+  collectEdges expr = case expr of
+    Val _ -> []
+    Add _ a b ->
+      [ { source: expr, target: a, weight: unit }
+      , { source: expr, target: b, weight: unit }
+      ] <> collectEdges a <> collectEdges b
+    Mul _ a b ->
+      [ { source: expr, target: a, weight: unit }
+      , { source: expr, target: b, weight: unit }
+      ] <> collectEdges a <> collectEdges b
+    Pow _ a _ ->
+      [ { source: expr, target: a, weight: unit }
+      ] <> collectEdges a
+    Exp _ a ->
+      [ { source: expr, target: a, weight: unit }
+      ] <> collectEdges a
+    Log _ a ->
+      [ { source: expr, target: a, weight: unit }
+      ] <> collectEdges a
+    Relu _ a ->
+      [ { source: expr, target: a, weight: unit }
+      ] <> collectEdges a
 
 seed :: Seed
 seed = mkSeed 42
@@ -67,41 +98,95 @@ main = runTest do
 
   suite "backward" do
     test "leaf" do
-      Assert.equal
-        (Leaf { val: 5.0, grad: 1.0 })
-        (backward (Leaf 5.0))
+      let
+        a = Val 5.0
+        dag = buildDag a
+        expected = Map.fromFoldable [ a /\ 1.0 ] :: GradMap
+      Assert.equal expected (backward a dag)
+
     test "add" do
-      Assert.equal
-        (Add { val: 8.0, grad: 1.0 } (Leaf { val: 3.0, grad: 1.0 }) (Leaf { val: 5.0, grad: 1.0 }))
-        (backward (Add 8.0 (Leaf 3.0) (Leaf 5.0)))
+      let
+        a = Val 3.0
+        b = Val 5.0
+        node = Add 8.0 a b
+        dag = buildDag node
+        expected =
+          Map.fromFoldable
+            [ a /\ 1.0, b /\ 1.0, node /\ 1.0 ] :: GradMap
+      Assert.equal expected (backward node dag)
+
     test "mul" do
-      Assert.equal
-        (Mul { val: 15.0, grad: 1.0 } (Leaf { val: 3.0, grad: 5.0 }) (Leaf { val: 5.0, grad: 3.0 }))
-        (backward (Mul 15.0 (Leaf 3.0) (Leaf 5.0)))
+      let
+        a = Val 3.0
+        b = Val 5.0
+        node = Mul 15.0 a b
+        dag = buildDag node
+        expected =
+          Map.fromFoldable
+            [ a /\ 5.0, b /\ 3.0, node /\ 1.0 ] :: GradMap
+      Assert.equal expected (backward node dag)
+
     test "pow" do
-      Assert.equal
-        (Pow { val: 9.0, grad: 1.0 } (Leaf { val: 3.0, grad: 6.0 }) 2.0)
-        (backward (Pow 9.0 (Leaf 3.0) 2.0))
+      let
+        a = Val 3.0
+        node = Pow 9.0 a 2.0
+        dag = buildDag node
+        expected =
+          Map.fromFoldable
+            [ a /\ 6.0, node /\ 1.0 ] :: GradMap
+      Assert.equal expected (backward node dag)
+
     test "exp" do
-      Assert.equal
-        (Exp { val: 1.0, grad: 1.0 } (Leaf { val: 0.0, grad: 1.0 }))
-        (backward (Exp 1.0 (Leaf 0.0)))
+      let
+        a = Val 0.0
+        node = Exp 1.0 a
+        dag = buildDag node
+        expected =
+          Map.fromFoldable
+            [ a /\ 1.0, node /\ 1.0 ] :: GradMap
+      Assert.equal expected (backward node dag)
+
     test "log" do
-      Assert.equal
-        (Log { val: 0.0, grad: 1.0 } (Leaf { val: 1.0, grad: 1.0 }))
-        (backward (Log 0.0 (Leaf 1.0)))
+      let
+        a = Val 1.0
+        node = Log 0.0 a
+        dag = buildDag node
+        expected =
+          Map.fromFoldable
+            [ a /\ 1.0, node /\ 1.0 ] :: GradMap
+      Assert.equal expected (backward node dag)
+
     test "relu positive" do
-      Assert.equal
-        (Relu { val: 5.0, grad: 1.0 } (Leaf { val: 5.0, grad: 1.0 }))
-        (backward (Relu 5.0 (Leaf 5.0)))
+      let
+        a = Val 5.0
+        node = Relu 5.0 a
+        dag = buildDag node
+        expected =
+          Map.fromFoldable
+            [ a /\ 1.0, node /\ 1.0 ] :: GradMap
+      Assert.equal expected (backward node dag)
+
     test "relu negative" do
-      Assert.equal
-        (Relu { val: 0.0, grad: 1.0 } (Leaf { val: -3.0, grad: 0.0 }))
-        (backward (Relu 0.0 (Leaf (-3.0))))
+      let
+        a = Val (-3.0)
+        node = Relu 0.0 a
+        dag = buildDag node
+        expected =
+          Map.fromFoldable
+            [ a /\ 0.0, node /\ 1.0 ] :: GradMap
+      Assert.equal expected (backward node dag)
+
     test "nested" do
-      Assert.equal
-        ( Add { val: 8.0, grad: 1.0 }
-            (Mul { val: 6.0, grad: 1.0 } (Leaf { val: 2.0, grad: 3.0 }) (Leaf { val: 3.0, grad: 2.0 }))
-            (Leaf { val: 2.0, grad: 1.0 })
-        )
-        (backward (Add 8.0 (Mul 6.0 (Leaf 2.0) (Leaf 3.0)) (Leaf 2.0)))
+      let
+        -- add(mul(a, b), a) where a is shared
+        a = Val 2.0
+        b = Val 3.0
+        mul = Mul 6.0 a b
+        root = Add 8.0 mul a
+        dag = buildDag root
+        -- grad_a: 1.0 (from add right) + 3.0 (from mul, g*b.val=1*3) = 4.0
+        -- grad_b: 2.0 (from mul, g*a.val=1*2)
+        expected =
+          Map.fromFoldable
+            [ a /\ 4.0, b /\ 2.0, mul /\ 1.0, root /\ 1.0 ] :: GradMap
+      Assert.equal expected (backward root dag)

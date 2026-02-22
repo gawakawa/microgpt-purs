@@ -2,16 +2,19 @@ module Main where
 
 import Prelude
 
-import Control.Comonad (class Comonad, extract)
-import Control.Extend (class Extend, extend)
+import Control.Comonad (class Comonad, class Extend, extend, extract)
 import Control.Monad.Gen.Trans (evalGen, shuffle)
 import Data.Array (concatMap, filter, length, nub)
 import Data.Char (toCharCode)
-import Data.Foldable (surroundMap)
+import Data.Foldable (foldl, surroundMap)
 import Data.Function (on)
+import Data.Graph.Weighted.DAG (DAG, topologicalSort)
+import Data.Map (Map, fromFoldableWith, lookup, singleton, unionWith)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Number as N
 import Data.String (Pattern(..), null, split, trim)
 import Data.String.CodeUnits (toCharArray)
+import Data.Tuple.Nested (type (/\), (/\))
 import Effect (Effect)
 import Effect.Aff (launchAff_)
 import Effect.Class (liftEffect)
@@ -19,38 +22,39 @@ import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile)
 import Random.LCG (Seed, randomSeed)
 
-data Tree a
-  = Leaf a
-  | Add a (Tree a) (Tree a)
-  | Mul a (Tree a) (Tree a)
-  | Pow a (Tree a) Number
-  | Exp a (Tree a)
-  | Log a (Tree a)
-  | Relu a (Tree a)
+data Expr a
+  = Val a
+  | Add a (Expr a) (Expr a)
+  | Mul a (Expr a) (Expr a)
+  | Pow a (Expr a) Number
+  | Exp a (Expr a)
+  | Log a (Expr a)
+  | Relu a (Expr a)
 
-derive instance Functor Tree
-derive instance Eq a => Eq (Tree a)
+derive instance Eq a => Eq (Expr a)
+derive instance Ord a => Ord (Expr a)
+derive instance Functor Expr
 
-instance Show a => Show (Tree a) where
-  show (Leaf v) = "(Leaf " <> show v <> ")"
-  show (Add v l r) = "(Add " <> show v <> " " <> show l <> " " <> show r <> ")"
-  show (Mul v l r) = "(Mul " <> show v <> " " <> show l <> " " <> show r <> ")"
-  show (Pow v child n) = "(Pow " <> show v <> " " <> show child <> " " <> show n <> ")"
-  show (Exp v child) = "(Exp " <> show v <> " " <> show child <> ")"
-  show (Log v child) = "(Log " <> show v <> " " <> show child <> ")"
-  show (Relu v child) = "(Relu " <> show v <> " " <> show child <> ")"
+instance Show a => Show (Expr a) where
+  show (Val v) = "(Val " <> show v <> ")"
+  show (Add v a b) = "(Add " <> show v <> " " <> show a <> " " <> show b <> ")"
+  show (Mul v a b) = "(Mul " <> show v <> " " <> show a <> " " <> show b <> ")"
+  show (Pow v a n) = "(Pow " <> show v <> " " <> show a <> " " <> show n <> ")"
+  show (Exp v a) = "(Exp " <> show v <> " " <> show a <> ")"
+  show (Log v a) = "(Log " <> show v <> " " <> show a <> ")"
+  show (Relu v a) = "(Relu " <> show v <> " " <> show a <> ")"
 
-instance Extend Tree where
-  extend f t@(Leaf _) = Leaf (f t)
-  extend f t@(Add _ l r) = Add (f t) (extend f l) (extend f r)
-  extend f t@(Mul _ l r) = Mul (f t) (extend f l) (extend f r)
-  extend f t@(Pow _ child n) = Pow (f t) (extend f child) n
-  extend f t@(Exp _ child) = Exp (f t) (extend f child)
-  extend f t@(Log _ child) = Log (f t) (extend f child)
-  extend f t@(Relu _ child) = Relu (f t) (extend f child)
+instance Extend Expr where
+  extend f expr@(Val _) = Val (f expr)
+  extend f expr@(Add _ a b) = Add (f expr) (extend f a) (extend f b)
+  extend f expr@(Mul _ a b) = Mul (f expr) (extend f a) (extend f b)
+  extend f expr@(Pow _ a n) = Pow (f expr) (extend f a) n
+  extend f expr@(Exp _ a) = Exp (f expr) (extend f a)
+  extend f expr@(Log _ a) = Log (f expr) (extend f a)
+  extend f expr@(Relu _ a) = Relu (f expr) (extend f a)
 
-instance Comonad Tree where
-  extract (Leaf v) = v
+instance Comonad Expr where
+  extract (Val v) = v
   extract (Add v _ _) = v
   extract (Mul v _ _) = v
   extract (Pow v _ _) = v
@@ -58,30 +62,31 @@ instance Comonad Tree where
   extract (Log v _) = v
   extract (Relu v _) = v
 
-backward :: Tree Number -> Tree { val :: Number, grad :: Number }
-backward = go 1.0
-  where
-  go :: Number -> Tree Number -> Tree { val :: Number, grad :: Number }
-  go grad (Leaf v) =
-    Leaf { val: v, grad }
+type GradMap = Map (Expr Number) Number
+
+propagate :: Number -> Expr Number -> Array (Expr Number /\ Number)
+propagate g = case _ of
+  Val _ -> []
   -- ∂(a+b)/∂a = 1, ∂(a+b)/∂b = 1
-  go grad (Add v left right) =
-    Add { val: v, grad } (go grad left) (go grad right)
+  Add _ a b -> [ a /\ g, b /\ g ]
   -- ∂(a·b)/∂a = b, ∂(a·b)/∂b = a
-  go grad (Mul v left right) =
-    Mul { val: v, grad } (go (grad * extract right) left) (go (grad * extract left) right)
+  Mul _ a b -> [ a /\ (g * extract b), b /\ (g * extract a) ]
   -- ∂aⁿ/∂a = n·aⁿ⁻¹
-  go grad (Pow v child n) =
-    Pow { val: v, grad } (go (grad * n * N.pow (extract child) (n - 1.0)) child) n
+  Pow _ a n -> [ a /\ (g * n * N.pow (extract a) (n - 1.0)) ]
   -- ∂eᵃ/∂a = eᵃ
-  go grad (Exp v child) =
-    Exp { val: v, grad } (go (grad * v) child)
+  Exp v a -> [ a /\ (g * v) ]
   -- ∂(ln a)/∂a = 1/a
-  go grad (Log v child) =
-    Log { val: v, grad } (go (grad / extract child) child)
+  Log _ a -> [ a /\ (g / extract a) ]
   -- ∂max(0,a)/∂a = 1 if a>0, else 0
-  go grad (Relu v child) =
-    Relu { val: v, grad } (go (grad * if extract child > 0.0 then 1.0 else 0.0) child)
+  Relu _ a -> [ a /\ (g * if extract a > 0.0 then 1.0 else 0.0) ]
+
+backward :: Expr Number -> DAG (Expr Number) Unit -> GradMap
+backward root dag = foldl step (singleton root 1.0) (topologicalSort dag)
+  where
+  step :: GradMap -> Expr Number -> GradMap
+  step grads expr = fromMaybe grads do
+    g <- lookup expr grads
+    pure $ unionWith (+) grads (fromFoldableWith (+) $ propagate g expr)
 
 encode :: Char -> Int
 encode c = on (-) toCharCode c 'a'
@@ -102,5 +107,5 @@ main :: Effect Unit
 main = launchAff_ do
   content <- readTextFile UTF8 "src/input.txt"
   seed <- liftEffect randomSeed
-  let dataset = initDataset seed content
+  let _ = initDataset seed content
   pure unit
