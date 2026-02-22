@@ -2,7 +2,8 @@ module Test.Main where
 
 import Prelude
 
-import Data.Array (length, sort)
+import Data.Array (length, replicate, sort)
+import Data.String.Common (joinWith)
 import Effect (Effect)
 import Main (initDataset, tokenize)
 import Random.LCG (Seed, mkSeed)
@@ -44,6 +45,11 @@ main = runTest do
           """
         result = initDataset seed input
       Assert.equal [ "apple", "banana", "cherry" ] (sort result)
+    test "large input preserves all elements" do
+      let
+        input = joinWith "\n" (replicate 32000 "name")
+        result = initDataset seed input
+      Assert.equal 32000 (length result)
   suite "tokenize" do
     test "empty input produces single BOS" do
       Assert.equal [ 0 ] (tokenize [])
