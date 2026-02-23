@@ -5,10 +5,10 @@ import Prelude
 import Control.Comonad (class Comonad, class Extend, extend, extract)
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
 import Control.Monad.Gen.Trans (Gen, evalGen, shuffle)
-import Data.Array (concatMap, filter, length, nub, sort)
-import Data.Unfoldable (replicateA)
+import Data.Array (concatMap, filter, length, nub, sort, zipWith)
+import Data.Int (toNumber)
 import Data.Char (toCharCode)
-import Data.Foldable (foldl, surroundMap)
+import Data.Foldable (foldl, sum, surroundMap)
 import Data.Function (on)
 import Data.Graph.Weighted.DAG (DAG, topologicalSort)
 import Data.Map (Map, fromFoldableWith, lookup, singleton, unionWith)
@@ -17,6 +17,8 @@ import Data.Number as N
 import Data.String (Pattern(..), null, split, trim)
 import Data.String.CodeUnits (toCharArray)
 import Data.Tuple.Nested (type (/\), (/\))
+import Data.Unfoldable (replicateA)
+import Debug (todo)
 import Effect (Effect)
 import Effect.Aff (launchAff_)
 import Effect.Class (liftEffect)
@@ -120,6 +122,8 @@ matrix nout nin = replicateA nout $ replicateA nin do
   where
   std = 0.08
 
+type RowVec a = Array a
+type ColVec a = Array a
 type Matrix a = Array (Array a)
 
 type LayerWeights =
@@ -159,6 +163,25 @@ flatten sd = join (join <$> matrices)
   matrices = [ sd.wte, sd.wpe, sd.lmHead ]
     <> concatMap layerMatrices sd.layers
   layerMatrices l = [ l.attnWq, l.attnWk, l.attnWv, l.attnWo, l.mlpFc1, l.mlpFc2 ]
+
+dot :: RowVec Number -> ColVec Number -> Number
+dot u v = sum $ zipWith (*) u v
+
+linear :: Matrix Number -> ColVec Number -> ColVec Number
+linear w x = w <#> \row -> dot row x
+
+softmax :: Array Number -> Array Number
+softmax logits = (_ / sum exps) <$> exps
+  where
+  maxVal = foldl max (-N.infinity) logits
+  exps = (N.exp <<< (_ - maxVal)) <$> logits
+
+rmsnorm :: Array Number -> Array Number
+rmsnorm x = ((*) scale) <$> x
+  where
+  ms = sum (square <$> x) / toNumber (length x)
+  scale = N.pow (ms + 1e-5) (-0.5)
+  square = join mul
 
 main :: Effect Unit
 main = launchAff_ do
