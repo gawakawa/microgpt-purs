@@ -3,8 +3,10 @@ module Main where
 import Prelude
 
 import Control.Comonad (class Comonad, class Extend, extend, extract)
-import Control.Monad.Gen.Trans (evalGen, shuffle)
+import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
+import Control.Monad.Gen.Trans (Gen, evalGen, shuffle)
 import Data.Array (concatMap, filter, length, nub)
+import Data.Unfoldable (replicateA)
 import Data.Char (toCharCode)
 import Data.Foldable (foldl, surroundMap)
 import Data.Function (on)
@@ -102,6 +104,60 @@ initDataset seed content = evalGen (shuffle docs) { newSeed: seed, size: 0 }
   where
   docs :: Array String
   docs = filter (not <<< null) $ trim <$> split (Pattern "\n") content
+
+sampleGauss :: forall m. MonadGen m => Number -> m Number
+sampleGauss std = do
+  u1 <- chooseFloat 1.0e-7 1.0
+  u2 <- chooseFloat 0.0 1.0
+  let z = N.sqrt (-2.0 * N.log u1) * N.cos (2.0 * N.pi * u2)
+  pure $ z * std
+
+matrix :: Int -> Int -> Gen (Matrix (Expr Number))
+matrix nout nin = replicateA nout $ replicateA nin do
+  g <- sampleGauss std
+  pure $ Val g
+  where
+  std = 0.08
+
+type Matrix a = Array (Array a)
+
+type LayerWeights =
+  { attnWq :: Matrix (Expr Number)
+  , attnWk :: Matrix (Expr Number)
+  , attnWv :: Matrix (Expr Number)
+  , attnWo :: Matrix (Expr Number)
+  , mlpFc1 :: Matrix (Expr Number)
+  , mlpFc2 :: Matrix (Expr Number)
+  }
+
+type StateDict =
+  { wte :: Matrix (Expr Number)
+  , wpe :: Matrix (Expr Number)
+  , lmHead :: Matrix (Expr Number)
+  , layers :: Array LayerWeights
+  }
+
+initParams :: Int -> Int -> Int -> Int -> Int -> Gen StateDict
+initParams nEmbd nHead nLayer blockSize vocabSize = do
+  wte <- matrix vocabSize nEmbd
+  wpe <- matrix blockSize nEmbd
+  lmHead <- matrix vocabSize nEmbd
+  layers <- replicateA nLayer do
+    attnWq <- matrix nEmbd nEmbd
+    attnWk <- matrix nEmbd nEmbd
+    attnWv <- matrix nEmbd nEmbd
+    attnWo <- matrix nEmbd nEmbd
+    mlpFc1 <- matrix nEmbd nEmbd
+    mlpFc2 <- matrix nEmbd nEmbd
+    pure { attnWq, attnWk, attnWv, attnWo, mlpFc1, mlpFc2 }
+  pure { wte, wpe, lmHead, layers }
+
+flatten :: StateDict -> Array (Expr Number)
+flatten sd = join (join <$> matrices)
+  where
+  matrices = [ sd.wte, sd.wpe, sd.lmHead ]
+    <> concatMap layerMatrices sd.layers
+  layerMatrices l = [ l.attnWq, l.attnWk, l.attnWv, l.attnWo, l.mlpFc1, l.mlpFc2 ]
 
 main :: Effect Unit
 main = launchAff_ do
