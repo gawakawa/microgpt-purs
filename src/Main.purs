@@ -94,7 +94,7 @@ encode :: Char -> Int
 encode c = on (-) toCharCode c 'a'
 
 buildVocab :: Array String -> Array Char
-buildVocab docs = sort $ nub $ concatMap toCharArray docs
+buildVocab = sort <<< nub <<< concatMap toCharArray
 
 tokenize :: Array String -> Array Int
 tokenize docs = surroundMap [ bos ] (map encode <<< toCharArray) docs
