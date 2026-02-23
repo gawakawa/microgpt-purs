@@ -168,7 +168,7 @@ dot :: Array Number -> Array Number -> Number
 dot u v = sum $ zipWith (*) u v
 
 linear :: Matrix Number -> Array Number -> Array Number
-linear w x = w <#> \row -> dot row x
+linear w x = (\row -> dot row x) <$> w
 
 softmax :: Array Number -> Array Number
 softmax logits = (_ / sum exps) <$> exps
