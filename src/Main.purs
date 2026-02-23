@@ -124,8 +124,6 @@ matrix nout nin = replicateA nout $ replicateA nin do
   where
   std = 0.08
 
-type RowVec a = Array a
-type ColVec a = Array a
 type Matrix a = Array (Array a)
 
 type LayerWeights =
@@ -166,10 +164,10 @@ flatten sd = join (join <$> matrices)
     <> concatMap layerMatrices sd.layers
   layerMatrices l = [ l.attnWq, l.attnWk, l.attnWv, l.attnWo, l.mlpFc1, l.mlpFc2 ]
 
-dot :: RowVec Number -> ColVec Number -> Number
+dot :: Array Number -> Array Number -> Number
 dot u v = sum $ zipWith (*) u v
 
-linear :: Matrix Number -> ColVec Number -> ColVec Number
+linear :: Matrix Number -> Array Number -> Array Number
 linear w x = w <#> \row -> dot row x
 
 softmax :: Array Number -> Array Number
@@ -188,15 +186,15 @@ rmsnorm x = ((*) scale) <$> x
 relu :: Number -> Number
 relu = max 0.0
 
-withResidual :: forall f. Functor f => (ColVec Number -> f (ColVec Number)) -> ColVec Number -> f (ColVec Number)
+withResidual :: forall f. Functor f => (Array Number -> f (Array Number)) -> Array Number -> f (Array Number)
 withResidual f x = map (zipWith (+) x) (f $ rmsnorm x)
 
 newtype TokenId = TokenId Int
 newtype PosId = PosId Int
 
-type Query = ColVec Number
-type Key = ColVec Number
-type Value = ColVec Number
+type Query = Array Number
+type Key = Array Number
+type Value = Array Number
 
 newtype KVCache = KVCache
   { keys :: Array Key
@@ -212,13 +210,13 @@ instance Semigroup KVCache where
 instance Monoid KVCache where
   mempty = KVCache { keys: [], values: [] }
 
-embedding :: Matrix Number -> Matrix Number -> TokenId -> PosId -> ColVec Number
+embedding :: Matrix Number -> Matrix Number -> TokenId -> PosId -> Array Number
 embedding wte wpe (TokenId tokId) (PosId posId) = zipWith (+) tokEmb posEmb
   where
   tokEmb = unsafePartial $ fromJust $ index wte tokId
   posEmb = unsafePartial $ fromJust $ index wpe posId
 
-headAttn :: Int -> Int -> Query -> Array Key -> Array Value -> ColVec Number
+headAttn :: Int -> Int -> Query -> Array Key -> Array Value -> Array Number
 headAttn h headDim q keys values = headOut
   where
   hs = h * headDim
@@ -229,7 +227,7 @@ headAttn h headDim q keys values = headOut
   attnWeights = softmax attnLogits
   headOut = foldl (zipWith (+)) (replicate headDim 0.0) (zipWith (\w v -> (_ * w) <$> v) attnWeights vH)
 
-multiHeadAttn :: LayerWeights -> Int -> KVCache -> ColVec Number -> KVCache /\ ColVec Number
+multiHeadAttn :: LayerWeights -> Int -> KVCache -> Array Number -> KVCache /\ Array Number
 multiHeadAttn weights headDim cache x = cache' /\ x'
   where
   attnWq = (map extract) <$> weights.attnWq
@@ -247,7 +245,7 @@ multiHeadAttn weights headDim cache x = cache' /\ x'
   xAttn = concatMap (\h -> headAttn h headDim q (unwrap cache').keys (unwrap cache').values) (range 0 $ nHead - 1)
   x' = linear attnWo xAttn
 
-mlp :: LayerWeights -> ColVec Number -> ColVec Number
+mlp :: LayerWeights -> Array Number -> Array Number
 mlp weights = linear fc2 <<< map relu <<< linear fc1
   where
   fc1 = (map extract) <$> weights.mlpFc1
