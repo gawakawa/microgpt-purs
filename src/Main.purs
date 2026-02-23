@@ -5,7 +5,7 @@ import Prelude
 import Control.Comonad (class Comonad, class Extend, extend, extract)
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
 import Control.Monad.Gen.Trans (Gen, evalGen, shuffle)
-import Data.Array (concatMap, filter, length, nub)
+import Data.Array (concatMap, filter, length, nub, sort)
 import Data.Unfoldable (replicateA)
 import Data.Char (toCharCode)
 import Data.Foldable (foldl, surroundMap)
@@ -93,11 +93,13 @@ backward root dag = foldl step (singleton root 1.0) (topologicalSort dag)
 encode :: Char -> Int
 encode c = on (-) toCharCode c 'a'
 
+buildVocab :: Array String -> Array Char
+buildVocab docs = sort $ nub $ concatMap toCharArray docs
+
 tokenize :: Array String -> Array Int
 tokenize docs = surroundMap [ bos ] (map encode <<< toCharArray) docs
   where
-  bos :: Int
-  bos = length $ nub $ concatMap toCharArray docs
+  bos = length $ buildVocab docs
 
 initDataset :: Seed -> String -> Array String
 initDataset seed content = evalGen (shuffle docs) { newSeed: seed, size: 0 }
@@ -163,5 +165,8 @@ main :: Effect Unit
 main = launchAff_ do
   content <- readTextFile UTF8 "src/input.txt"
   seed <- liftEffect randomSeed
-  let _ = initDataset seed content
+  let dataset = initDataset seed content
+  let vocab = buildVocab dataset
+  let vocabSize = length vocab + 1
+  let params = evalGen (initParams 16 4 1 16 vocabSize) { newSeed: seed, size: 0 }
   pure unit

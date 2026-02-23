@@ -9,7 +9,7 @@ import Data.Tuple.Nested (type (/\), (/\))
 import Data.Graph.Weighted (fromEdges)
 import Data.Graph.Weighted.DAG (DAG, unsafeFromWeightedDigraph)
 import Effect (Effect)
-import Main (Expr(..), GradMap, backward, initDataset, tokenize)
+import Main (Expr(..), GradMap, backward, buildVocab, initDataset, tokenize)
 import Random.LCG (Seed, mkSeed)
 import Test.Unit (suite, test)
 import Test.Unit.Main (runTest)
@@ -81,6 +81,18 @@ main = runTest do
         input = joinWith "\n" (replicate 32000 "name")
         result = initDataset seed input
       Assert.equal 32000 (length result)
+
+  suite "buildVocab" do
+    test "empty input returns empty array" do
+      Assert.equal [] (buildVocab [])
+    test "single char" do
+      Assert.equal [ 'a' ] (buildVocab [ "a" ])
+    test "multiple chars are sorted" do
+      Assert.equal [ 'a', 'b', 'c' ] (buildVocab [ "cba" ])
+    test "duplicates are removed" do
+      Assert.equal [ 'a', 'b' ] (buildVocab [ "aabb" ])
+    test "multiple docs are merged" do
+      Assert.equal [ 'a', 'b', 'c' ] (buildVocab [ "ab", "bc" ])
 
   suite "tokenize" do
     test "empty input produces single BOS" do
