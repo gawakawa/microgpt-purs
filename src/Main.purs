@@ -5,20 +5,22 @@ import Prelude
 import Control.Comonad (class Comonad, class Extend, extend, extract)
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
 import Control.Monad.Gen.Trans (Gen, evalGen, shuffle)
-import Data.Array (concatMap, filter, length, nub, sort, zipWith)
+import Data.Array (concatMap, filter, index, length, nub, range, replicate, slice, snoc, sort, zipWith)
+import Data.Bifunctor (lmap)
 import Data.Int (toNumber)
 import Data.Char (toCharCode)
 import Data.Foldable (foldl, sum, surroundMap)
 import Data.Function (on)
 import Data.Graph.Weighted.DAG (DAG, topologicalSort)
 import Data.Map (Map, fromFoldableWith, lookup, singleton, unionWith)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromJust, fromMaybe)
 import Data.Number as N
 import Data.String (Pattern(..), null, split, trim)
 import Data.String.CodeUnits (toCharArray)
 import Data.Tuple.Nested (type (/\), (/\))
 import Data.Unfoldable (replicateA)
-import Debug (todo)
+import Data.Newtype (class Newtype, unwrap)
+import Partial.Unsafe (unsafePartial)
 import Effect (Effect)
 import Effect.Aff (launchAff_)
 import Effect.Class (liftEffect)
@@ -182,6 +184,85 @@ rmsnorm x = ((*) scale) <$> x
   ms = sum (square <$> x) / toNumber (length x)
   scale = N.pow (ms + 1e-5) (-0.5)
   square = join mul
+
+relu :: Number -> Number
+relu = max 0.0
+
+withResidual :: forall f. Functor f => (ColVec Number -> f (ColVec Number)) -> ColVec Number -> f (ColVec Number)
+withResidual f x = map (zipWith (+) x) (f $ rmsnorm x)
+
+newtype TokenId = TokenId Int
+newtype PosId = PosId Int
+
+type Query = ColVec Number
+type Key = ColVec Number
+type Value = ColVec Number
+
+newtype KVCache = KVCache
+  { keys :: Array Key
+  , values :: Array Value
+  }
+
+derive instance Newtype KVCache _
+
+instance Semigroup KVCache where
+  append (KVCache c1) (KVCache c2) =
+    KVCache { keys: c1.keys <> c2.keys, values: c1.values <> c2.values }
+
+instance Monoid KVCache where
+  mempty = KVCache { keys: [], values: [] }
+
+embedding :: Matrix Number -> Matrix Number -> TokenId -> PosId -> ColVec Number
+embedding wte wpe (TokenId tokId) (PosId posId) = zipWith (+) tokEmb posEmb
+  where
+  tokEmb = unsafePartial $ fromJust $ index wte tokId
+  posEmb = unsafePartial $ fromJust $ index wpe posId
+
+headAttn :: Int -> Int -> Query -> Array Key -> Array Value -> ColVec Number
+headAttn h headDim q keys values = headOut
+  where
+  hs = h * headDim
+  qH = slice hs (hs + headDim) q
+  kH = slice hs (hs + headDim) <$> keys
+  vH = slice hs (hs + headDim) <$> values
+  attnLogits = (\k -> dot qH k / N.pow (toNumber headDim) 0.5) <$> kH
+  attnWeights = softmax attnLogits
+  headOut = foldl (zipWith (+)) (replicate headDim 0.0) (zipWith (\w v -> (_ * w) <$> v) attnWeights vH)
+
+multiHeadAttn :: LayerWeights -> Int -> KVCache -> ColVec Number -> KVCache /\ ColVec Number
+multiHeadAttn weights headDim cache x = cache' /\ x'
+  where
+  attnWq = (map extract) <$> weights.attnWq
+  attnWk = (map extract) <$> weights.attnWk
+  attnWv = (map extract) <$> weights.attnWv
+  attnWo = (map extract) <$> weights.attnWo
+
+  q = linear attnWq x
+  k = linear attnWk x
+  v = linear attnWv x
+
+  cache' = KVCache { keys: snoc (unwrap cache).keys k, values: snoc (unwrap cache).values v }
+
+  nHead = length q / headDim
+  xAttn = concatMap (\h -> headAttn h headDim q (unwrap cache').keys (unwrap cache').values) (range 0 $ nHead - 1)
+  x' = linear attnWo xAttn
+
+mlp :: LayerWeights -> ColVec Number -> ColVec Number
+mlp weights = linear fc2 <<< map relu <<< linear fc1
+  where
+  fc1 = (map extract) <$> weights.mlpFc1
+  fc2 = (map extract) <$> weights.mlpFc2
+
+gpt :: StateDict -> Int -> Array KVCache -> TokenId -> PosId -> Array Number /\ Array KVCache
+gpt sd headDim caches tokId posId = logits /\ caches'
+  where
+  wte = (map extract) <$> sd.wte
+  wpe = (map extract) <$> sd.wpe
+  lmHead = (map extract) <$> sd.lmHead
+  x = embedding wte wpe tokId posId
+  step (cs /\ v) (w /\ c) = lmap (snoc cs) $ (withResidual (multiHeadAttn w headDim c) >=> withResidual (\y -> mempty /\ mlp w y)) v
+  caches' /\ x' = foldl step ([] /\ x) (zipWith (/\) sd.layers caches)
+  logits = linear lmHead x'
 
 main :: Effect Unit
 main = launchAff_ do
