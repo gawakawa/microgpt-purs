@@ -9,6 +9,7 @@ import Data.Tuple.Nested (type (/\), (/\))
 import Data.Graph.Weighted (fromEdges)
 import Data.Graph.Weighted.DAG (DAG, unsafeFromWeightedDigraph)
 import Effect (Effect)
+import Control.Monad.Gen.Trans (Gen, evalGen)
 import Main (Expr(..), GradMap, backward, buildVocab, initDataset, tokenize)
 import Random.LCG (Seed, mkSeed)
 import Test.Unit (suite, test)
@@ -42,18 +43,18 @@ buildDag root = unsafeFromWeightedDigraph $ fromEdges (collectEdges root)
       [ { source: expr, target: a, weight: unit }
       ] <> collectEdges a
 
-seed :: Seed
-seed = mkSeed 42
+runGen :: forall a. Gen a -> a
+runGen gen = evalGen gen { newSeed: mkSeed 42, size: 0 }
 
 main :: Effect Unit
 main = runTest do
   suite "initDataset" do
     test "empty string returns empty array" do
-      Assert.equal [] (initDataset seed "")
+      Assert.equal [] (runGen $ initDataset "")
     test "newlines only returns empty array" do
-      Assert.equal [] (initDataset seed "\n\n\n")
+      Assert.equal [] (runGen $ initDataset "\n\n\n")
     test "blank lines are removed" do
-      let result = initDataset seed "foo\n\n  \nbar\n"
+      let result = runGen $ initDataset "foo\n\n  \nbar\n"
       Assert.equal 2 (length result)
     test "deterministic with same seed" do
       let
@@ -63,8 +64,8 @@ main = runTest do
           y
           z
           """
-        a = initDataset seed input
-        b = initDataset seed input
+        a = runGen $ initDataset input
+        b = runGen $ initDataset input
       Assert.equal a b
     test "elements are preserved" do
       let
@@ -74,12 +75,12 @@ main = runTest do
           apple
           banana
           """
-        result = initDataset seed input
+        result = runGen $ initDataset input
       Assert.equal [ "apple", "banana", "cherry" ] (sort result)
     test "large input preserves all elements" do
       let
         input = joinWith "\n" (replicate 32000 "name")
-        result = initDataset seed input
+        result = runGen $ initDataset input
       Assert.equal 32000 (length result)
 
   suite "buildVocab" do

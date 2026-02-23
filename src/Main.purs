@@ -22,7 +22,7 @@ import Effect.Aff (launchAff_)
 import Effect.Class (liftEffect)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile)
-import Random.LCG (Seed, randomSeed)
+import Random.LCG (randomSeed)
 
 data Expr a
   = Val a
@@ -101,10 +101,9 @@ tokenize docs = surroundMap [ bos ] (map encode <<< toCharArray) docs
   where
   bos = length $ buildVocab docs
 
-initDataset :: Seed -> String -> Array String
-initDataset seed content = evalGen (shuffle docs) { newSeed: seed, size: 0 }
+initDataset :: String -> Gen (Array String)
+initDataset content = shuffle docs
   where
-  docs :: Array String
   docs = filter (not <<< null) $ trim <$> split (Pattern "\n") content
 
 sampleGauss :: forall m. MonadGen m => Number -> m Number
@@ -165,8 +164,10 @@ main :: Effect Unit
 main = launchAff_ do
   content <- readTextFile UTF8 "src/input.txt"
   seed <- liftEffect randomSeed
-  let dataset = initDataset seed content
-  let vocab = buildVocab dataset
-  let vocabSize = length vocab + 1
-  let params = evalGen (initParams 16 4 1 16 vocabSize) { newSeed: seed, size: 0 }
+  let
+    (dataset /\ params) = flip evalGen { newSeed: seed, size: 0 } do
+      dataset <- initDataset content
+      let vocabSize = length (buildVocab dataset) + 1
+      params <- initParams 16 4 1 16 vocabSize
+      pure $ dataset /\ params
   pure unit
