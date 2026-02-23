@@ -148,8 +148,8 @@ initParams nEmbd nHead nLayer blockSize vocabSize = do
     attnWk <- matrix nEmbd nEmbd
     attnWv <- matrix nEmbd nEmbd
     attnWo <- matrix nEmbd nEmbd
-    mlpFc1 <- matrix nEmbd nEmbd
-    mlpFc2 <- matrix nEmbd nEmbd
+    mlpFc1 <- matrix (4 * nEmbd) nEmbd
+    mlpFc2 <- matrix nEmbd (4 * nEmbd)
     pure { attnWq, attnWk, attnWv, attnWo, mlpFc1, mlpFc2 }
   pure { wte, wpe, lmHead, layers }
 
