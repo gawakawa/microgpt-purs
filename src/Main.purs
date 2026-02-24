@@ -231,8 +231,8 @@ instance Foldable LayerWeights where
       <> foldMap (foldMap f) l.attnWo
       <> foldMap (foldMap f) l.mlpFc1
       <> foldMap (foldMap f) l.mlpFc2
-  foldl f z = foldl f z <<< fromFoldable
-  foldr f z = foldr f z <<< fromFoldable
+  foldl f z lw = foldl f z (foldMap pure lw :: Array _)
+  foldr f z lw = foldr f z (foldMap pure lw :: Array _)
 
 instance Traversable LayerWeights where
   traverse f (LayerWeights l) = ado
@@ -269,8 +269,8 @@ instance Foldable StateDict where
     foldMap (foldMap f) s.wte <> foldMap (foldMap f) s.wpe
       <> foldMap (foldMap f) s.lmHead
       <> foldMap (foldMap f) s.layers
-  foldl f z = foldl f z <<< fromFoldable
-  foldr f z = foldr f z <<< fromFoldable
+  foldl f z sd = foldl f z (foldMap pure sd :: Array _)
+  foldr f z sd = foldr f z (foldMap pure sd :: Array _)
 
 instance Traversable StateDict where
   traverse f (StateDict s) = ado
