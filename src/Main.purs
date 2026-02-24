@@ -2,16 +2,21 @@ module Main where
 
 import Prelude
 
+import Debug (todo)
 import Control.Comonad (class Comonad, class Extend, extend, extract)
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
 import Control.Monad.Gen.Trans (Gen, evalGen, shuffle)
-import Data.Array (concatMap, filter, index, length, nub, range, replicate, slice, snoc, sort, zipWith)
+import Data.Array (concatMap, drop, filter, fromFoldable, length, nub, range, replicate, slice, snoc, sort, unsafeIndex, zipWith)
 import Data.Bifunctor (lmap)
 import Data.Int (toNumber)
 import Data.Char (toCharCode)
-import Data.Foldable (foldl, sum, surroundMap)
+import Data.Foldable (class Foldable, foldl, foldMap, foldr, sum, surroundMap)
+import Data.FoldableWithIndex (foldlWithIndex)
+import Data.Traversable (class Traversable, traverse, mapAccumL)
+import Data.FunctorWithIndex (mapWithIndex)
 import Data.Function (on)
-import Data.Graph.Weighted.DAG (DAG, topologicalSort)
+import Data.Graph.Weighted (fromEdges)
+import Data.Graph.Weighted.DAG (DAG, topologicalSort, unsafeFromWeightedDigraph)
 import Data.Map (Map, fromFoldableWith, lookup, singleton, unionWith)
 import Data.Maybe (Maybe(..), fromJust, fromMaybe)
 import Data.Number as N
@@ -28,6 +33,20 @@ import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile)
 import Random.LCG (randomSeed)
 
+class (Ord a, EuclideanRing a) <= Differentiable a where
+  exp :: a -> a
+  log :: a -> a
+  pow :: a -> Number -> a
+  relu :: a -> a
+  fromNumber :: Number -> a
+
+instance Differentiable Number where
+  exp = N.exp
+  log = N.log
+  pow = N.pow
+  relu = max 0.0
+  fromNumber = identity
+
 data Expr a
   = Val a
   | Add a (Expr a) (Expr a)
@@ -40,6 +59,29 @@ data Expr a
 derive instance Eq a => Eq (Expr a)
 derive instance Ord a => Ord (Expr a)
 derive instance Functor Expr
+
+instance Semiring (Expr Number) where
+  zero = Val 0.0
+  one = Val 1.0
+  add a b = Add (extract a + extract b) a b
+  mul a b = Mul (extract a * extract b) a b
+
+instance Ring (Expr Number) where
+  sub a b = add a (mul (Val (-1.0)) b)
+
+instance CommutativeRing (Expr Number)
+
+instance EuclideanRing (Expr Number) where
+  degree _ = 1
+  div a b = mul a (Pow (1.0 / extract b) b (-1.0))
+  mod _ _ = zero
+
+instance Differentiable (Expr Number) where
+  exp a = Exp (N.exp $ extract a) a
+  log a = Log (N.log $ extract a) a
+  pow a n = Pow (N.pow (extract a) n) a n
+  relu a = Relu (max 0.0 $ extract a) a
+  fromNumber = Val
 
 instance Show a => Show (Expr a) where
   show (Val v) = "(Val " <> show v <> ")"
@@ -94,6 +136,33 @@ backward root dag = foldl step (singleton root 1.0) (topologicalSort dag)
     g <- lookup expr grads
     pure $ unionWith (+) grads (fromFoldableWith (+) $ propagate g expr)
 
+buildDag :: Expr Number -> DAG (Expr Number) Unit
+buildDag root = unsafeFromWeightedDigraph $ fromEdges (collectEdges root)
+  where
+  collectEdges :: Expr Number -> Array { source :: Expr Number, target :: Expr Number, weight :: Unit }
+  collectEdges expr = case expr of
+    Val _ -> []
+    Add _ a b ->
+      [ { source: expr, target: a, weight: unit }
+      , { source: expr, target: b, weight: unit }
+      ] <> collectEdges a <> collectEdges b
+    Mul _ a b ->
+      [ { source: expr, target: a, weight: unit }
+      , { source: expr, target: b, weight: unit }
+      ] <> collectEdges a <> collectEdges b
+    Pow _ a _ ->
+      [ { source: expr, target: a, weight: unit }
+      ] <> collectEdges a
+    Exp _ a ->
+      [ { source: expr, target: a, weight: unit }
+      ] <> collectEdges a
+    Log _ a ->
+      [ { source: expr, target: a, weight: unit }
+      ] <> collectEdges a
+    Relu _ a ->
+      [ { source: expr, target: a, weight: unit }
+      ] <> collectEdges a
+
 encode :: Char -> Int
 encode c = on (-) toCharCode c 'a'
 
@@ -126,23 +195,85 @@ matrix nout nin = replicateA nout $ replicateA nin do
 
 type Matrix a = Array (Array a)
 
-type LayerWeights =
-  { attnWq :: Matrix (Expr Number)
-  , attnWk :: Matrix (Expr Number)
-  , attnWv :: Matrix (Expr Number)
-  , attnWo :: Matrix (Expr Number)
-  , mlpFc1 :: Matrix (Expr Number)
-  , mlpFc2 :: Matrix (Expr Number)
+newtype LayerWeights a = LayerWeights
+  { attnWq :: Matrix a
+  , attnWk :: Matrix a
+  , attnWv :: Matrix a
+  , attnWo :: Matrix a
+  , mlpFc1 :: Matrix a
+  , mlpFc2 :: Matrix a
   }
 
-type StateDict =
-  { wte :: Matrix (Expr Number)
-  , wpe :: Matrix (Expr Number)
-  , lmHead :: Matrix (Expr Number)
-  , layers :: Array LayerWeights
+derive instance Newtype (LayerWeights a) _
+
+instance Functor LayerWeights where
+  map f (LayerWeights l) = LayerWeights
+    { attnWq: map (map f) l.attnWq
+    , attnWk: map (map f) l.attnWk
+    , attnWv: map (map f) l.attnWv
+    , attnWo: map (map f) l.attnWo
+    , mlpFc1: map (map f) l.mlpFc1
+    , mlpFc2: map (map f) l.mlpFc2
+    }
+
+instance Foldable LayerWeights where
+  foldMap f (LayerWeights l) =
+    foldMap (foldMap f) l.attnWq <> foldMap (foldMap f) l.attnWk
+      <> foldMap (foldMap f) l.attnWv
+      <> foldMap (foldMap f) l.attnWo
+      <> foldMap (foldMap f) l.mlpFc1
+      <> foldMap (foldMap f) l.mlpFc2
+  foldl f z = foldl f z <<< fromFoldable
+  foldr f z = foldr f z <<< fromFoldable
+
+instance Traversable LayerWeights where
+  traverse f (LayerWeights l) = ado
+    attnWq <- traverse (traverse f) l.attnWq
+    attnWk <- traverse (traverse f) l.attnWk
+    attnWv <- traverse (traverse f) l.attnWv
+    attnWo <- traverse (traverse f) l.attnWo
+    mlpFc1 <- traverse (traverse f) l.mlpFc1
+    mlpFc2 <- traverse (traverse f) l.mlpFc2
+    in LayerWeights { attnWq, attnWk, attnWv, attnWo, mlpFc1, mlpFc2 }
+  sequence = traverse identity
+
+newtype StateDict a = StateDict
+  { wte :: Matrix a
+  , wpe :: Matrix a
+  , lmHead :: Matrix a
+  , layers :: Array (LayerWeights a)
+  , headDim :: Int
   }
 
-initParams :: Int -> Int -> Int -> Int -> Int -> Gen StateDict
+derive instance Newtype (StateDict a) _
+
+instance Functor StateDict where
+  map f (StateDict s) = StateDict
+    { wte: map (map f) s.wte
+    , wpe: map (map f) s.wpe
+    , lmHead: map (map f) s.lmHead
+    , layers: map (map f) s.layers
+    , headDim: s.headDim
+    }
+
+instance Foldable StateDict where
+  foldMap f (StateDict s) =
+    foldMap (foldMap f) s.wte <> foldMap (foldMap f) s.wpe
+      <> foldMap (foldMap f) s.lmHead
+      <> foldMap (foldMap f) s.layers
+  foldl f z = foldl f z <<< fromFoldable
+  foldr f z = foldr f z <<< fromFoldable
+
+instance Traversable StateDict where
+  traverse f (StateDict s) = ado
+    wte <- traverse (traverse f) s.wte
+    wpe <- traverse (traverse f) s.wpe
+    lmHead <- traverse (traverse f) s.lmHead
+    layers <- traverse (traverse f) s.layers
+    in StateDict { wte, wpe, lmHead, layers, headDim: s.headDim }
+  sequence = traverse identity
+
+initParams :: Int -> Int -> Int -> Int -> Int -> Gen (StateDict (Expr Number))
 initParams nEmbd nHead nLayer blockSize vocabSize = do
   wte <- matrix vocabSize nEmbd
   wpe <- matrix blockSize nEmbd
@@ -154,122 +285,189 @@ initParams nEmbd nHead nLayer blockSize vocabSize = do
     attnWo <- matrix nEmbd nEmbd
     mlpFc1 <- matrix (4 * nEmbd) nEmbd
     mlpFc2 <- matrix nEmbd (4 * nEmbd)
-    pure { attnWq, attnWk, attnWv, attnWo, mlpFc1, mlpFc2 }
-  pure { wte, wpe, lmHead, layers }
-
-flatten :: StateDict -> Array (Expr Number)
-flatten sd = join (join <$> matrices)
+    pure $ LayerWeights { attnWq, attnWk, attnWv, attnWo, mlpFc1, mlpFc2 }
+  pure $ StateDict { wte, wpe, lmHead, layers, headDim }
   where
-  matrices = [ sd.wte, sd.wpe, sd.lmHead ]
-    <> concatMap layerMatrices sd.layers
-  layerMatrices l = [ l.attnWq, l.attnWk, l.attnWv, l.attnWo, l.mlpFc1, l.mlpFc2 ]
+  headDim = nEmbd / nHead
 
-dot :: Array Number -> Array Number -> Number
+flatten :: forall t a. Foldable t => t a -> Array a
+flatten = fromFoldable
+
+unflatten :: forall t a b. Traversable t => t a -> Array b -> t b
+unflatten template vals = (mapAccumL step vals template).value
+  where
+  step arr _ = { accum: drop 1 arr, value: unsafePartial $ unsafeIndex arr 0 }
+
+type TrainState =
+  { params :: StateDict (Expr Number)
+  , dataset :: Array String
+  , m :: Array Number
+  , v :: Array Number
+  , numSteps :: Int
+  , learningRate :: Number
+  , beta1 :: Number
+  , beta2 :: Number
+  , epsAdam :: Number
+  }
+
+train :: TrainState -> Int -> TrainState
+train state step = state { params = params', m = m', v = v' }
+  where
+  doc = unsafePartial $ unsafeIndex state.dataset (step `mod` length state.dataset)
+  tokens = tokenize [ doc ]
+  loss = forward state.params tokens
+  grads = unsafePartial $ (\p -> fromJust $ lookup p gradMap) <$> flatten state.params
+  dag = buildDag loss
+  gradMap = backward loss dag
+  lrT = state.learningRate * (1.0 - toNumber step / toNumber state.numSteps)
+  params' /\ m' /\ v' = adamUpdate state step lrT grads
+
+crossEntropyLoss :: forall a. Differentiable a => Array a -> Int -> a
+crossEntropyLoss logits targetIdx = negate $ log prob
+  where
+  probs = softmax logits
+  prob = unsafePartial $ unsafeIndex probs targetIdx
+
+forward :: StateDict (Expr Number) -> Array Int -> Expr Number
+forward params tokens = totalLoss
+  where
+  sd = unwrap params
+  nLayer = length sd.layers
+  initialCaches = replicate nLayer mempty
+  inputs = slice 0 (length tokens - 1) tokens
+  targets = slice 1 (length tokens) tokens
+
+  step pos (caches /\ lossAcc) (tok /\ target) = caches' /\ (lossAcc + loss)
+    where
+    logits /\ caches' = gpt params sd.headDim caches (TokenId tok) (PosId pos)
+    loss = crossEntropyLoss logits target
+
+  _ /\ totalLoss = foldlWithIndex step (initialCaches /\ zero) (zipWith (/\) inputs targets)
+
+adamUpdate :: TrainState -> Int -> Number -> Array Number -> StateDict (Expr Number) /\ Array Number /\ Array Number
+adamUpdate state step lrT grads = params' /\ m' /\ v'
+  where
+  t = toNumber (step + 1)
+
+  -- Moment updates
+  m' = zipWith (\mi gi -> state.beta1 * mi + (1.0 - state.beta1) * gi) state.m grads
+  v' = zipWith (\vi gi -> state.beta2 * vi + (1.0 - state.beta2) * gi * gi) state.v grads
+
+  -- Bias-corrected moments
+  mHat = (_ / (1.0 - N.pow state.beta1 t)) <$> m'
+  vHat = (_ / (1.0 - N.pow state.beta2 t)) <$> v'
+
+  -- Parameter updates
+  updates = zipWith (\mh vh -> lrT * mh / (N.sqrt vh + state.epsAdam)) mHat vHat
+
+  flat = flatten state.params
+  flat' = zipWith (\p u -> Val $ extract p - u) flat updates
+  params' = unflatten state.params flat'
+
+dot :: forall a. Semiring a => Array a -> Array a -> a
 dot u v = sum $ zipWith (*) u v
 
-linear :: Matrix Number -> Array Number -> Array Number
+linear :: forall a. Semiring a => Matrix a -> Array a -> Array a
 linear w x = (\row -> dot row x) <$> w
 
-softmax :: Array Number -> Array Number
+softmax :: forall a. Differentiable a => Array a -> Array a
 softmax logits = (_ / sum exps) <$> exps
   where
-  maxVal = foldl max (-N.infinity) logits
-  exps = (N.exp <<< (_ - maxVal)) <$> logits
+  maxVal = foldl max (fromNumber (-N.infinity)) logits
+  exps = (exp <<< (_ - maxVal)) <$> logits
 
-rmsnorm :: Array Number -> Array Number
+rmsnorm :: forall a. Differentiable a => Array a -> Array a
 rmsnorm x = ((*) scale) <$> x
   where
-  ms = sum (square <$> x) / toNumber (length x)
-  scale = N.pow (ms + 1e-5) (-0.5)
+  ms = sum (square <$> x) / fromNumber (toNumber (length x))
+  scale = pow (ms + fromNumber 1e-5) (-0.5)
   square = join mul
 
-relu :: Number -> Number
-relu = max 0.0
-
-withResidual :: forall f. Functor f => (Array Number -> f (Array Number)) -> Array Number -> f (Array Number)
+withResidual :: forall f a. Functor f => Differentiable a => (Array a -> f (Array a)) -> Array a -> f (Array a)
 withResidual f x = map (zipWith (+) x) (f $ rmsnorm x)
 
 newtype TokenId = TokenId Int
 newtype PosId = PosId Int
 
-type Query = Array Number
-type Key = Array Number
-type Value = Array Number
-
-newtype KVCache = KVCache
-  { keys :: Array Key
-  , values :: Array Value
+newtype KVCache a = KVCache
+  { keys :: Array (Array a)
+  , values :: Array (Array a)
   }
 
-derive instance Newtype KVCache _
+derive instance Newtype (KVCache a) _
 
-instance Semigroup KVCache where
+instance Semigroup (KVCache a) where
   append (KVCache c1) (KVCache c2) =
     KVCache { keys: c1.keys <> c2.keys, values: c1.values <> c2.values }
 
-instance Monoid KVCache where
+instance Monoid (KVCache a) where
   mempty = KVCache { keys: [], values: [] }
 
-embedding :: Matrix Number -> Matrix Number -> TokenId -> PosId -> Array Number
+embedding :: forall a. Semiring a => Matrix a -> Matrix a -> TokenId -> PosId -> Array a
 embedding wte wpe (TokenId tokId) (PosId posId) = zipWith (+) tokEmb posEmb
   where
-  tokEmb = unsafePartial $ fromJust $ index wte tokId
-  posEmb = unsafePartial $ fromJust $ index wpe posId
+  tokEmb = unsafePartial $ unsafeIndex wte tokId
+  posEmb = unsafePartial $ unsafeIndex wpe posId
 
-headAttn :: Int -> Int -> Query -> Array Key -> Array Value -> Array Number
+headAttn :: forall a. Differentiable a => Int -> Int -> Array a -> Array (Array a) -> Array (Array a) -> Array a
 headAttn h headDim q keys values = headOut
   where
   hs = h * headDim
   qH = slice hs (hs + headDim) q
   kH = slice hs (hs + headDim) <$> keys
   vH = slice hs (hs + headDim) <$> values
-  attnLogits = (\k -> dot qH k / N.pow (toNumber headDim) 0.5) <$> kH
+  attnLogits = (\k -> dot qH k / pow (fromNumber (toNumber headDim)) 0.5) <$> kH
   attnWeights = softmax attnLogits
-  headOut = foldl (zipWith (+)) (replicate headDim 0.0) (zipWith (\w v -> (_ * w) <$> v) attnWeights vH)
+  headOut = foldl (zipWith (+)) (replicate headDim zero) (zipWith (\w v -> (_ * w) <$> v) attnWeights vH)
 
-multiHeadAttn :: LayerWeights -> Int -> KVCache -> Array Number -> KVCache /\ Array Number
+multiHeadAttn :: forall a. Differentiable a => LayerWeights a -> Int -> KVCache a -> Array a -> KVCache a /\ Array a
 multiHeadAttn weights headDim cache x = cache' /\ x'
   where
-  attnWq = (map extract) <$> weights.attnWq
-  attnWk = (map extract) <$> weights.attnWk
-  attnWv = (map extract) <$> weights.attnWv
-  attnWo = (map extract) <$> weights.attnWo
-
-  q = linear attnWq x
-  k = linear attnWk x
-  v = linear attnWv x
-
+  w = unwrap weights
+  q = linear w.attnWq x
+  k = linear w.attnWk x
+  v = linear w.attnWv x
   cache' = KVCache { keys: snoc (unwrap cache).keys k, values: snoc (unwrap cache).values v }
-
   nHead = length q / headDim
   xAttn = concatMap (\h -> headAttn h headDim q (unwrap cache').keys (unwrap cache').values) (range 0 $ nHead - 1)
-  x' = linear attnWo xAttn
+  x' = linear w.attnWo xAttn
 
-mlp :: LayerWeights -> Array Number -> Array Number
-mlp weights = linear fc2 <<< map relu <<< linear fc1
+mlp :: forall a. Differentiable a => LayerWeights a -> Array a -> Array a
+mlp weights = linear w.mlpFc2 <<< map relu <<< linear w.mlpFc1
   where
-  fc1 = (map extract) <$> weights.mlpFc1
-  fc2 = (map extract) <$> weights.mlpFc2
+  w = unwrap weights
 
-gpt :: StateDict -> Int -> Array KVCache -> TokenId -> PosId -> Array Number /\ Array KVCache
-gpt sd headDim caches tokId posId = logits /\ caches'
+gpt :: forall a. Differentiable a => StateDict a -> Int -> Array (KVCache a) -> TokenId -> PosId -> Array a /\ Array (KVCache a)
+gpt stateDict headDim caches tokId posId = logits /\ caches'
   where
-  wte = (map extract) <$> sd.wte
-  wpe = (map extract) <$> sd.wpe
-  lmHead = (map extract) <$> sd.lmHead
-  x = embedding wte wpe tokId posId
+  sd = unwrap stateDict
+  x = embedding sd.wte sd.wpe tokId posId
   step (cs /\ v) (w /\ c) = lmap (snoc cs) $ (withResidual (multiHeadAttn w headDim c) >=> withResidual (\y -> mempty /\ mlp w y)) v
   caches' /\ x' = foldl step ([] /\ x) (zipWith (/\) sd.layers caches)
-  logits = linear lmHead x'
+  logits = linear sd.lmHead x'
 
 main :: Effect Unit
 main = launchAff_ do
   content <- readTextFile UTF8 "src/input.txt"
   seed <- liftEffect randomSeed
   let
+    numSteps = 1000
     (dataset /\ params) = flip evalGen { newSeed: seed, size: 0 } do
       dataset <- initDataset content
       let vocabSize = length (buildVocab dataset) + 1
       params <- initParams 16 4 1 16 vocabSize
       pure $ dataset /\ params
+    numParams = length $ flatten params
+    initialState =
+      { params
+      , dataset
+      , m: replicate numParams 0.0
+      , v: replicate numParams 0.0
+      , numSteps
+      , learningRate: 0.01
+      , beta1: 0.85
+      , beta2: 0.99
+      , epsAdam: 1e-8
+      }
+    finalState = foldl train initialState (range 0 (numSteps - 1))
   pure unit

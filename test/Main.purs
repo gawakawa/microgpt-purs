@@ -6,42 +6,14 @@ import Data.Array (length, replicate, sort)
 import Data.Map as Map
 import Data.String.Common (joinWith)
 import Data.Tuple.Nested (type (/\), (/\))
-import Data.Graph.Weighted (fromEdges)
-import Data.Graph.Weighted.DAG (DAG, unsafeFromWeightedDigraph)
+import Data.Graph.Weighted.DAG (DAG)
 import Effect (Effect)
 import Control.Monad.Gen.Trans (Gen, evalGen)
-import Main (Expr(..), GradMap, backward, buildVocab, initDataset, tokenize)
+import Main (Expr(..), GradMap, backward, buildDag, buildVocab, initDataset, tokenize)
 import Random.LCG (Seed, mkSeed)
 import Test.Unit (suite, test)
 import Test.Unit.Main (runTest)
 import Test.Unit.Assert as Assert
-
-buildDag :: Expr Number -> DAG (Expr Number) Unit
-buildDag root = unsafeFromWeightedDigraph $ fromEdges (collectEdges root)
-  where
-  collectEdges :: Expr Number -> Array { source :: Expr Number, target :: Expr Number, weight :: Unit }
-  collectEdges expr = case expr of
-    Val _ -> []
-    Add _ a b ->
-      [ { source: expr, target: a, weight: unit }
-      , { source: expr, target: b, weight: unit }
-      ] <> collectEdges a <> collectEdges b
-    Mul _ a b ->
-      [ { source: expr, target: a, weight: unit }
-      , { source: expr, target: b, weight: unit }
-      ] <> collectEdges a <> collectEdges b
-    Pow _ a _ ->
-      [ { source: expr, target: a, weight: unit }
-      ] <> collectEdges a
-    Exp _ a ->
-      [ { source: expr, target: a, weight: unit }
-      ] <> collectEdges a
-    Log _ a ->
-      [ { source: expr, target: a, weight: unit }
-      ] <> collectEdges a
-    Relu _ a ->
-      [ { source: expr, target: a, weight: unit }
-      ] <> collectEdges a
 
 runGen :: forall a. Gen a -> a
 runGen gen = evalGen gen { newSeed: mkSeed 42, size: 0 }
