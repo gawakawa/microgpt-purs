@@ -2,11 +2,10 @@ module Main where
 
 import Prelude
 
-import Debug (todo)
 import Control.Comonad (class Comonad, class Extend, extend, extract)
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
 import Control.Monad.Gen.Trans (Gen, evalGen, shuffle)
-import Data.Array (concatMap, drop, filter, fromFoldable, length, nub, range, replicate, slice, snoc, sort, unsafeIndex, zipWith)
+import Data.Array (concatMap, drop, filter, findIndex, fromFoldable, length, nub, range, replicate, slice, snoc, sort, unsafeIndex, zipWith)
 import Data.Bifunctor (lmap)
 import Data.Int (toNumber)
 import Data.Char (toCharCode)
@@ -21,7 +20,7 @@ import Data.Map (Map, fromFoldableWith, lookup, singleton, unionWith)
 import Data.Maybe (Maybe(..), fromJust, fromMaybe)
 import Data.Number as N
 import Data.String (Pattern(..), null, split, trim)
-import Data.String.CodeUnits (toCharArray)
+import Data.String.CodeUnits (fromCharArray, toCharArray)
 import Data.Tuple.Nested (type (/\), (/\))
 import Data.Unfoldable (replicateA)
 import Data.Newtype (class Newtype, unwrap)
@@ -166,6 +165,9 @@ buildDag root = unsafeFromWeightedDigraph $ fromEdges (collectEdges root)
 encode :: Char -> Int
 encode c = on (-) toCharCode c 'a'
 
+decode :: Array Char -> Int -> Char
+decode = unsafePartial unsafeIndex
+
 buildVocab :: Array String -> Array Char
 buildVocab = sort <<< nub <<< concatMap toCharArray
 
@@ -185,6 +187,12 @@ sampleGauss std = do
   u2 <- chooseFloat 0.0 1.0
   let z = N.sqrt (-2.0 * N.log u1) * N.cos (2.0 * N.pi * u2)
   pure $ z * std
+
+sample :: forall m. MonadGen m => Array Number -> m Int
+sample probs = pick <$> chooseFloat 0.0 1.0
+  where
+  cumsum = (mapAccumL (\s p -> { accum: s + p, value: s + p }) 0.0 probs).value
+  pick r = fromMaybe (length probs - 1) $ findIndex (_ > r) cumsum
 
 matrix :: Int -> Int -> Gen (Matrix (ComputationGraph Number))
 matrix nout nin = replicateA nout $ replicateA nin do
@@ -446,28 +454,53 @@ gpt stateDict headDim caches tokId posId = logits /\ caches'
   caches' /\ x' = foldl step ([] /\ x) (zipWith (/\) sd.layers caches)
   logits = linear sd.lmHead x'
 
+inference :: forall m. MonadGen m => StateDict Number -> Array String -> m String
+inference params dataset = generate (blockSize - 1) initialCaches [] (bos /\ 0)
+  where
+  sd = unwrap params
+  vocab = buildVocab dataset
+  bos = length vocab
+  nLayer = length sd.layers
+  initialCaches = replicate nLayer mempty
+  blockSize = length sd.wpe
+  temperature = 0.5
+
+  generate :: Int -> Array (KVCache Number) -> Array Char -> (Int /\ Int) -> m String
+  generate 0 _ chars _ = pure $ fromCharArray chars
+  generate n caches chars (tok /\ pos) = do
+    let logits /\ caches' = gpt params sd.headDim caches (TokenId tok) (PosId pos)
+    let probs = softmax $ (_ / temperature) <$> logits
+    nextTok <- sample probs
+    if nextTok == bos then
+      pure $ fromCharArray chars
+    else do
+      let char = decode vocab nextTok
+      generate (n - 1) caches' (snoc chars char) (nextTok /\ (pos + 1))
+
 main :: Effect Unit
 main = launchAff_ do
   content <- readTextFile UTF8 "src/input.txt"
   seed <- liftEffect randomSeed
   let
     numSteps = 1000
-    (dataset /\ params) = flip evalGen { newSeed: seed, size: 0 } do
+    _generated = flip evalGen { newSeed: seed, size: 0 } do
       dataset <- initDataset content
       let vocabSize = length (buildVocab dataset) + 1
       params <- initParams 16 4 1 16 vocabSize
-      pure $ dataset /\ params
-    numParams = length $ flatten params
-    initialState =
-      { params
-      , dataset
-      , m: replicate numParams 0.0
-      , v: replicate numParams 0.0
-      , numSteps
-      , learningRate: 0.01
-      , beta1: 0.85
-      , beta2: 0.99
-      , epsAdam: 1e-8
-      }
-    finalState = foldl train initialState (range 0 (numSteps - 1))
+      let
+        numParams = length $ flatten params
+        initialState =
+          { params
+          , dataset
+          , m: replicate numParams 0.0
+          , v: replicate numParams 0.0
+          , numSteps
+          , learningRate: 0.01
+          , beta1: 0.85
+          , beta2: 0.99
+          , epsAdam: 1e-8
+          }
+        finalState = foldl train initialState (range 0 (numSteps - 1))
+        trainedParams = extract <$> finalState.params
+      inference trainedParams dataset
   pure unit
