@@ -9,8 +9,10 @@ import Data.Tuple.Nested (type (/\), (/\))
 import Data.Graph.Weighted.DAG (DAG)
 import Effect (Effect)
 import Control.Monad.Gen.Trans (Gen, evalGen)
-import Main (ComputationGraph(..), GradMap, backward, buildDag, buildVocab, initDataset, tokenize)
+import Inference (buildVocab)
+import Main (ComputationGraph(..), GradMap, backward, buildDag, initDataset, tokenize)
 import Random.LCG (Seed, mkSeed)
+import Test.Inference as Inference
 import Test.Unit (suite, test)
 import Test.Unit.Main (runTest)
 import Test.Unit.Assert as Assert
@@ -55,17 +57,7 @@ main = runTest do
         result = runGen $ initDataset input
       Assert.equal 32000 (length result)
 
-  suite "buildVocab" do
-    test "empty input returns empty array" do
-      Assert.equal [] (buildVocab [])
-    test "single char" do
-      Assert.equal [ 'a' ] (buildVocab [ "a" ])
-    test "multiple chars are sorted" do
-      Assert.equal [ 'a', 'b', 'c' ] (buildVocab [ "cba" ])
-    test "duplicates are removed" do
-      Assert.equal [ 'a', 'b' ] (buildVocab [ "aabb" ])
-    test "multiple docs are merged" do
-      Assert.equal [ 'a', 'b', 'c' ] (buildVocab [ "ab", "bc" ])
+  Inference.tests
 
   suite "tokenize" do
     test "empty input produces single BOS" do
