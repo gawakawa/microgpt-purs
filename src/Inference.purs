@@ -3,7 +3,7 @@ module Inference where
 import Prelude
 
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
-import Data.Array (concatMap, findIndex, length, nub, range, replicate, slice, snoc, sort, zipWith)
+import Data.Array (concatMap, findIndex, length, nub, range, replicate, slice, snoc, sort, unsafeIndex, zipWith)
 import Data.Bifunctor (lmap)
 import Data.Foldable (class Foldable, foldMap, foldl, foldr, sum)
 import Data.Int (toNumber)
@@ -12,7 +12,8 @@ import Data.Newtype (class Newtype, unwrap)
 import Data.String.CodeUnits (fromCharArray, toCharArray)
 import Data.Traversable (class Traversable, traverse, mapAccumL)
 import Data.Tuple.Nested (type (/\), (/\))
-import Partial.Unsafe (unsafePartial, unsafeIndex)
+import Data.Number as N
+import Partial.Unsafe (unsafePartial)
 
 class (Ord a, EuclideanRing a) <= Differentiable a where
   exp :: a -> a
@@ -20,8 +21,6 @@ class (Ord a, EuclideanRing a) <= Differentiable a where
   pow :: a -> Number -> a
   relu :: a -> a
   fromNumber :: Number -> a
-
-import Data.Number as N
 
 instance Differentiable Number where
   exp = N.exp
