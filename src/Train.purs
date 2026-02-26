@@ -22,7 +22,8 @@ import Data.Tuple.Nested (type (/\), (/\))
 import Data.Unfoldable (replicateA)
 import Partial.Unsafe (unsafePartial)
 import Inference (class Differentiable, log, Matrix, LayerWeights(..), StateDict(..), TokenId(..), PosId(..), buildVocab, softmax, gpt)
-import Autograd (ComputationGraph(..), GradMap, backward, buildDag)
+import Autograd (GradMap, backward, buildDag)
+import ComputationGraph (ComputationGraph(..))
 
 encode :: Char -> Int
 encode c = on (-) toCharCode c 'a'
