@@ -1,9 +1,9 @@
-module Test.Inference where
+module Test.Tokenizer where
 
 import Prelude
 
 import Effect (Effect)
-import Inference (buildVocab)
+import Tokenizer (buildVocab)
 import Test.Unit (TestSuite, suite, test)
 import Test.Unit.Assert as Assert
 

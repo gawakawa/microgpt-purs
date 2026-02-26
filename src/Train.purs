@@ -5,10 +5,8 @@ import Prelude
 import Control.Comonad (extract)
 import Control.Monad.Gen.Trans (Gen, shuffle)
 import Data.Array (drop, filter, fromFoldable, length, replicate, slice, unsafeIndex, zipWith)
-import Data.Char (toCharCode)
-import Data.Foldable (class Foldable, surroundMap)
+import Data.Foldable (class Foldable)
 import Data.FoldableWithIndex (foldlWithIndex)
-import Data.Function (on)
 import Data.Int (toNumber)
 import Data.Map (lookup)
 import Data.Maybe (fromJust)
@@ -21,17 +19,9 @@ import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
 import Params (LayerWeights, StateDict(..))
 import GPT (TokenId(..), PosId(..), softmax, gpt)
-import Inference (buildVocab)
+import Tokenizer (buildVocab, tokenize)
 import Autograd (GradMap, backward, buildDag)
 import ComputationGraph (class Differentiable, ComputationGraph(..), log)
-
-encode :: Char -> Int
-encode c = on (-) toCharCode c 'a'
-
-tokenize :: Array String -> Array Int
-tokenize docs = surroundMap [ bos ] (map encode <<< toCharArray) docs
-  where
-  bos = length $ buildVocab docs
 
 initDataset :: String -> Gen (Array String)
 initDataset content = shuffle docs

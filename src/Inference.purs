@@ -3,21 +3,15 @@ module Inference where
 import Prelude
 
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
-import Data.Array (concatMap, findIndex, length, nub, replicate, snoc, sort, unsafeIndex)
+import Data.Array (findIndex, length, replicate, snoc)
 import Data.Maybe (fromMaybe)
 import Data.Newtype (unwrap)
-import Data.String.CodeUnits (fromCharArray, toCharArray)
+import Data.String.CodeUnits (fromCharArray)
 import Data.Traversable (mapAccumL)
 import Data.Tuple.Nested (type (/\), (/\))
-import Partial.Unsafe (unsafePartial)
 import GPT (KVCache, TokenId(..), PosId(..), gpt, softmax)
 import Params (StateDict(..))
-
-decode :: Array Char -> Int -> Char
-decode = unsafePartial unsafeIndex
-
-buildVocab :: Array String -> Array Char
-buildVocab = sort <<< nub <<< concatMap toCharArray
+import Tokenizer (buildVocab, decode)
 
 sample :: forall m. MonadGen m => Array Number -> m Int
 sample probs = pick <$> chooseFloat 0.0 1.0

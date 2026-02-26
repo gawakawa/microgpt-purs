@@ -11,10 +11,10 @@ import Effect (Effect)
 import Control.Monad.Gen.Trans (Gen, evalGen)
 import Autograd (GradMap, backward, buildDag)
 import ComputationGraph (ComputationGraph(..))
-import Inference (buildVocab)
-import Train (initDataset, tokenize)
+import Tokenizer (buildVocab, tokenize)
+import Train (initDataset)
 import Random.LCG (Seed, mkSeed)
-import Test.Inference as Inference
+import Test.Tokenizer as Tokenizer
 import Test.Unit (suite, test)
 import Test.Unit.Main (runTest)
 import Test.Unit.Assert as Assert
@@ -59,7 +59,7 @@ main = runTest do
         result = runGen $ initDataset input
       Assert.equal 32000 (length result)
 
-  Inference.tests
+  Tokenizer.tests
 
   suite "tokenize" do
     test "empty input produces single BOS" do
