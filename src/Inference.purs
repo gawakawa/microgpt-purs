@@ -5,109 +5,17 @@ import Prelude
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
 import Data.Array (concatMap, findIndex, length, nub, range, replicate, slice, snoc, sort, unsafeIndex, zipWith)
 import Data.Bifunctor (lmap)
-import Data.Foldable (class Foldable, foldMap, foldl, foldr, sum)
+import Data.Foldable (foldl, sum)
 import Data.Int (toNumber)
 import Data.Maybe (fromMaybe)
 import Data.Newtype (class Newtype, unwrap)
 import Data.String.CodeUnits (fromCharArray, toCharArray)
-import Data.Traversable (class Traversable, traverse, mapAccumL)
+import Data.Traversable (mapAccumL)
 import Data.Tuple.Nested (type (/\), (/\))
 import Data.Number as N
 import Partial.Unsafe (unsafePartial)
-
-class (Ord a, EuclideanRing a) <= Differentiable a where
-  exp :: a -> a
-  log :: a -> a
-  pow :: a -> Number -> a
-  relu :: a -> a
-  fromNumber :: Number -> a
-
-instance Differentiable Number where
-  exp = N.exp
-  log = N.log
-  pow = N.pow
-  relu = max 0.0
-  fromNumber = identity
-
-type Matrix a = Array (Array a)
-
-newtype LayerWeights a = LayerWeights
-  { attnWq :: Matrix a
-  , attnWk :: Matrix a
-  , attnWv :: Matrix a
-  , attnWo :: Matrix a
-  , mlpFc1 :: Matrix a
-  , mlpFc2 :: Matrix a
-  }
-
-derive instance Newtype (LayerWeights a) _
-
-instance Functor LayerWeights where
-  map f (LayerWeights l) = LayerWeights
-    { attnWq: map (map f) l.attnWq
-    , attnWk: map (map f) l.attnWk
-    , attnWv: map (map f) l.attnWv
-    , attnWo: map (map f) l.attnWo
-    , mlpFc1: map (map f) l.mlpFc1
-    , mlpFc2: map (map f) l.mlpFc2
-    }
-
-instance Foldable LayerWeights where
-  foldMap f (LayerWeights l) =
-    foldMap (foldMap f) l.attnWq <> foldMap (foldMap f) l.attnWk
-      <> foldMap (foldMap f) l.attnWv
-      <> foldMap (foldMap f) l.attnWo
-      <> foldMap (foldMap f) l.mlpFc1
-      <> foldMap (foldMap f) l.mlpFc2
-  foldl f z lw = foldl f z (foldMap pure lw :: Array _)
-  foldr f z lw = foldr f z (foldMap pure lw :: Array _)
-
-instance Traversable LayerWeights where
-  traverse f (LayerWeights l) = ado
-    attnWq <- traverse (traverse f) l.attnWq
-    attnWk <- traverse (traverse f) l.attnWk
-    attnWv <- traverse (traverse f) l.attnWv
-    attnWo <- traverse (traverse f) l.attnWo
-    mlpFc1 <- traverse (traverse f) l.mlpFc1
-    mlpFc2 <- traverse (traverse f) l.mlpFc2
-    in LayerWeights { attnWq, attnWk, attnWv, attnWo, mlpFc1, mlpFc2 }
-  sequence = traverse identity
-
-newtype StateDict a = StateDict
-  { wte :: Matrix a
-  , wpe :: Matrix a
-  , lmHead :: Matrix a
-  , layers :: Array (LayerWeights a)
-  , headDim :: Int
-  }
-
-derive instance Newtype (StateDict a) _
-
-instance Functor StateDict where
-  map f (StateDict s) = StateDict
-    { wte: map (map f) s.wte
-    , wpe: map (map f) s.wpe
-    , lmHead: map (map f) s.lmHead
-    , layers: map (map f) s.layers
-    , headDim: s.headDim
-    }
-
-instance Foldable StateDict where
-  foldMap f (StateDict s) =
-    foldMap (foldMap f) s.wte <> foldMap (foldMap f) s.wpe
-      <> foldMap (foldMap f) s.lmHead
-      <> foldMap (foldMap f) s.layers
-  foldl f z sd = foldl f z (foldMap pure sd :: Array _)
-  foldr f z sd = foldr f z (foldMap pure sd :: Array _)
-
-instance Traversable StateDict where
-  traverse f (StateDict s) = ado
-    wte <- traverse (traverse f) s.wte
-    wpe <- traverse (traverse f) s.wpe
-    lmHead <- traverse (traverse f) s.lmHead
-    layers <- traverse (traverse f) s.layers
-    in StateDict { wte, wpe, lmHead, layers, headDim: s.headDim }
-  sequence = traverse identity
+import ComputationGraph (class Differentiable, exp, fromNumber, log, pow, relu)
+import Params (Matrix, LayerWeights(..), StateDict(..))
 
 newtype TokenId = TokenId Int
 newtype PosId = PosId Int

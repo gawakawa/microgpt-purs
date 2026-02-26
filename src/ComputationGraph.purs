@@ -5,7 +5,20 @@ import Prelude
 import Control.Comonad (class Comonad, class Extend, extend, extract)
 import Data.Foldable (class Foldable, foldl, foldMap, foldr)
 import Data.Number as N
-import Inference (class Differentiable)
+
+class (Ord a, EuclideanRing a) <= Differentiable a where
+  exp :: a -> a
+  log :: a -> a
+  pow :: a -> Number -> a
+  relu :: a -> a
+  fromNumber :: Number -> a
+
+instance Differentiable Number where
+  exp = N.exp
+  log = N.log
+  pow = N.pow
+  relu = max 0.0
+  fromNumber = identity
 
 data ComputationGraph a
   = Val a

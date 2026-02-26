@@ -12,8 +12,9 @@ import Effect.Class (liftEffect)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile)
 import Random.LCG (randomSeed)
+import Params (initParams)
 import Inference (buildVocab, inference)
-import Train (TrainState, flatten, initDataset, initParams, train)
+import Train (TrainState, flatten, initDataset, train)
 
 main :: Effect Unit
 main = launchAff_ do
