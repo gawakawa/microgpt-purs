@@ -10,7 +10,7 @@ import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
 import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
-import Data.Array.Partial (unsafeIndex)
+import Data.Array (unsafeIndex)
 import ComputationGraph (class Differentiable, exp, fromNumber, pow, relu)
 import Matrix (Matrix, dot, linear)
 import Params (LayerWeights(..), StateDict(..))
