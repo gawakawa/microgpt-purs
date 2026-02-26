@@ -11,7 +11,11 @@ _: {
         };
         settings.formatter.purs-tidy = {
           command = ps-tools.for-0_15.purs-tidy;
-          options = [ "format-in-place" ];
+          options = [
+            "format-in-place"
+            "--threads"
+            "0"
+          ];
           includes = [ "*.purs" ];
         };
       };
