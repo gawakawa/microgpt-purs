@@ -10,8 +10,7 @@ import Data.Number as N
 import Data.Traversable (class Traversable, traverse)
 import Data.Unfoldable (replicateA)
 import ComputationGraph (ComputationGraph(..))
-
-type Matrix a = Array (Array a)
+import Matrix (Matrix)
 
 newtype LayerWeights a = LayerWeights
   { attnWq :: Matrix a

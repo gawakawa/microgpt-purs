@@ -15,7 +15,8 @@ import Data.Tuple.Nested (type (/\), (/\))
 import Data.Number as N
 import Partial.Unsafe (unsafePartial)
 import ComputationGraph (class Differentiable, exp, fromNumber, log, pow, relu)
-import Params (Matrix, LayerWeights(..), StateDict(..))
+import Matrix (Matrix, dot, linear)
+import Params (LayerWeights(..), StateDict(..))
 
 newtype TokenId = TokenId Int
 newtype PosId = PosId Int
@@ -45,12 +46,6 @@ sample probs = pick <$> chooseFloat 0.0 1.0
   where
   cumsum = (mapAccumL (\s p -> { accum: s + p, value: s + p }) 0.0 probs).value
   pick r = fromMaybe (length probs - 1) $ findIndex (_ > r) cumsum
-
-dot :: forall a. Semiring a => Array a -> Array a -> a
-dot u v = sum $ zipWith (*) u v
-
-linear :: forall a. Semiring a => Matrix a -> Array a -> Array a
-linear w x = (\row -> dot row x) <$> w
 
 softmax :: forall a. Differentiable a => Array a -> Array a
 softmax logits = (_ / sum exps) <$> exps
