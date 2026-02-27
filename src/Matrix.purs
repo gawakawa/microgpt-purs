@@ -16,6 +16,8 @@ derive newtype instance Show a => Show (Vec a)
 derive newtype instance Functor Vec
 derive newtype instance Foldable Vec
 derive newtype instance Traversable Vec
+derive newtype instance Semigroup (Vec a)
+derive newtype instance Monoid (Vec a)
 
 instance Semiring a => Semiring (Vec a) where
   add (Vec u) (Vec v) = Vec (zipWith add u v)

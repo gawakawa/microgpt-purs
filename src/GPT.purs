@@ -2,12 +2,14 @@ module GPT where
 
 import Prelude
 
+import Control.Monad.State (State, runState)
+import Control.Monad.State.Class (gets, modify_)
 import Data.Array (unsafeIndex)
 import Data.Array as Array
+import Data.Enum (enumFromTo)
 import Data.List (List(..), (:))
 import Data.List as List
-import Data.Bifunctor (lmap)
-import Data.Foldable (foldl, length, sum)
+import Data.Foldable (foldMap, foldl, length, sum)
 import Data.Int (toNumber)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
@@ -63,17 +65,19 @@ headAttn h headDim q cache = headOut
   attnWeights = softmax attnLogits
   headOut = foldl (+) (Vec $ Array.replicate headDim zero) $ List.zipWith (\w v -> (_ * w) <$> v) (List.fromFoldable $ unwrap attnWeights) values
 
-multiHeadAttn :: forall a. Differentiable a => LayerWeights a -> Int -> KVCache a -> Vec a -> KVCache a /\ Vec a
-multiHeadAttn weights headDim cache x = cache' /\ x'
+multiHeadAttn :: forall a. Differentiable a => LayerWeights a -> Int -> Vec a -> State (KVCache a) (Vec a)
+multiHeadAttn weights headDim x = do
+  modify_ \(KVCache list) -> KVCache $ { key: k, value: v } : list
+  kvList <- gets unwrap
+  pure $ linear w.attnWo $ foldMap (\h -> headAttn h headDim q kvList) heads
   where
   w = unwrap weights
   q = linear w.attnWq x
   k = linear w.attnWk x
   v = linear w.attnWv x
-  cache' = KVCache $ { key: k, value: v } : unwrap cache
   nHead = length q / headDim
-  xAttn = Vec $ Array.concatMap (unwrap <<< (\h -> headAttn h headDim q (unwrap cache'))) (Array.range 0 $ nHead - 1)
-  x' = linear w.attnWo xAttn
+  heads :: Array Int
+  heads = enumFromTo 0 $ nHead - 1
 
 mlp :: forall a. Differentiable a => LayerWeights a -> Vec a -> Vec a
 mlp weights = linear w.mlpFc2 <<< map relu <<< linear w.mlpFc1
@@ -85,6 +89,9 @@ gpt stateDict headDim caches tokId posId = logits /\ caches'
   where
   sd = unwrap stateDict
   x = embed sd.wte (unwrap tokId) + embed sd.wpe (unwrap posId)
-  step (cs /\ v) (w /\ c) = lmap (Array.snoc cs) $ (withResidual (multiHeadAttn w headDim c) >=> withResidual (\y -> mempty /\ mlp w y)) v
+  step (cs /\ v) (w /\ c) = Array.snoc cs c' /\ result
+    where
+    stateComp = withResidual (multiHeadAttn w headDim) >=> withResidual (pure <<< mlp w)
+    result /\ c' = runState (stateComp v) c
   caches' /\ x' = foldl step ([] /\ x) (Array.zipWith (/\) sd.layers caches)
   logits = linear sd.lmHead x'
