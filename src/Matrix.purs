@@ -11,6 +11,8 @@ type Matrix a = Array (Array a)
 newtype Vec a = Vec (Array a)
 
 derive instance Newtype (Vec a) _
+derive instance Eq a => Eq (Vec a)
+derive newtype instance Show a => Show (Vec a)
 
 instance Semiring a => Semiring (Vec a) where
   add (Vec u) (Vec v) = Vec (zipWith add u v)
