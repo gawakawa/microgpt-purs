@@ -78,9 +78,7 @@ multiHeadAttn weights headDim cache x = cache' /\ x'
   x' = linear w.attnWo xAttn
 
 mlp :: forall a. Differentiable a => LayerWeights a -> Array a -> Array a
-mlp weights = linear w.mlpFc2 <<< map relu <<< linear w.mlpFc1
-  where
-  w = unwrap weights
+mlp weights = linear (unwrap weights).mlpFc2 <<< map relu <<< linear (unwrap weights).mlpFc1
 
 gpt :: forall a. Differentiable a => StateDict a -> Int -> Array (KVCache a) -> TokenId -> PosId -> Array a /\ Array (KVCache a)
 gpt stateDict headDim caches tokId posId = logits /\ caches'
