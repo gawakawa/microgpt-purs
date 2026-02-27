@@ -6,17 +6,20 @@ import Data.Array (concatMap, length, range, replicate, slice, snoc, zipWith)
 import Data.Bifunctor (lmap)
 import Data.Foldable (foldl, sum)
 import Data.Int (toNumber)
+import Data.Array (unsafeIndex)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
 import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
-import Data.Array (unsafeIndex)
 import ComputationGraph (class Differentiable, exp, fromNumber, pow, relu)
-import Matrix (Matrix, dot, linear)
+import Matrix (Matrix, Vec(..), dot, linear)
 import Params (LayerWeights(..), StateDict(..))
 
 newtype TokenId = TokenId Int
 newtype PosId = PosId Int
+
+derive instance Newtype TokenId _
+derive instance Newtype PosId _
 
 newtype KVCache a = KVCache
   { keys :: Array (Array a)
@@ -48,11 +51,8 @@ rmsnorm x = ((*) scale) <$> x
 withResidual :: forall f a. Functor f => Differentiable a => (Array a -> f (Array a)) -> Array a -> f (Array a)
 withResidual f x = map (zipWith (+) x) (f $ rmsnorm x)
 
-embedding :: forall a. Semiring a => Matrix a -> Matrix a -> TokenId -> PosId -> Array a
-embedding wte wpe (TokenId tokId) (PosId posId) = zipWith (+) tokEmb posEmb
-  where
-  tokEmb = unsafePartial $ unsafeIndex wte tokId
-  posEmb = unsafePartial $ unsafeIndex wpe posId
+embed :: forall a. Matrix a -> Int -> Vec a
+embed = map Vec <<< unsafePartial unsafeIndex
 
 headAttn :: forall a. Differentiable a => Int -> Int -> Array a -> Array (Array a) -> Array (Array a) -> Array a
 headAttn h headDim q keys values = headOut
@@ -84,7 +84,7 @@ gpt :: forall a. Differentiable a => StateDict a -> Int -> Array (KVCache a) -> 
 gpt stateDict headDim caches tokId posId = logits /\ caches'
   where
   sd = unwrap stateDict
-  x = embedding sd.wte sd.wpe tokId posId
+  x = unwrap $ embed sd.wte (unwrap tokId) + embed sd.wpe (unwrap posId)
   step (cs /\ v) (w /\ c) = lmap (snoc cs) $ (withResidual (multiHeadAttn w headDim c) >=> withResidual (\y -> mempty /\ mlp w y)) v
   caches' /\ x' = foldl step ([] /\ x) (zipWith (/\) sd.layers caches)
   logits = linear sd.lmHead x'
