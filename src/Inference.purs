@@ -3,9 +3,11 @@ module Inference where
 import Prelude
 
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
-import Data.Array (findIndex, length, replicate, snoc)
+import Data.Array (findIndex, replicate, snoc)
+import Data.Foldable (length)
 import Data.Maybe (fromMaybe)
 import Data.Newtype (unwrap)
+import Matrix (Vec(..))
 import Data.String.CodeUnits (fromCharArray)
 import Data.Traversable (mapAccumL)
 import Data.Tuple.Nested (type (/\), (/\))
@@ -13,8 +15,8 @@ import GPT (KVCache, TokenId(..), PosId(..), gpt, softmax)
 import Params (StateDict(..))
 import Tokenizer (buildVocab, decode)
 
-sample :: forall m. MonadGen m => Array Number -> m Int
-sample probs = pick <$> chooseFloat 0.0 1.0
+sample :: forall m. MonadGen m => Vec Number -> m Int
+sample (Vec probs) = pick <$> chooseFloat 0.0 1.0
   where
   cumsum = (mapAccumL (\s p -> { accum: s + p, value: s + p }) 0.0 probs).value
   pick r = fromMaybe (length probs - 1) $ findIndex (_ > r) cumsum

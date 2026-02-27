@@ -10,7 +10,7 @@ import Data.Number as N
 import Data.Traversable (class Traversable, traverse)
 import Data.Unfoldable (replicateA)
 import ComputationGraph (ComputationGraph(..))
-import Matrix (Matrix)
+import Matrix (Matrix, Vec(..))
 
 newtype LayerWeights a = LayerWeights
   { attnWq :: Matrix a
@@ -98,9 +98,10 @@ sampleGauss std = do
   pure $ z * std
 
 matrix :: Int -> Int -> Gen (Matrix (ComputationGraph Number))
-matrix nout nin = replicateA nout $ replicateA nin do
-  g <- sampleGauss std
-  pure $ Val g
+matrix nout nin = Vec <$> replicateA nout do
+  Vec <$> replicateA nin do
+    g <- sampleGauss std
+    pure $ Val g
   where
   std = 0.08
 

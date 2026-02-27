@@ -17,6 +17,7 @@ import Data.String.CodeUnits (toCharArray)
 import Data.Traversable (class Traversable, mapAccumL)
 import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
+import Matrix (Vec(..))
 import Params (LayerWeights, StateDict(..))
 import GPT (TokenId(..), PosId(..), softmax, gpt)
 import Tokenizer (buildVocab, tokenize)
@@ -60,10 +61,10 @@ train state step = state { params = params', m = m', v = v' }
   lrT = state.learningRate * (1.0 - toNumber step / toNumber state.numSteps)
   params' /\ m' /\ v' = adamUpdate state step lrT grads
 
-crossEntropyLoss :: forall a. Differentiable a => Array a -> Int -> a
+crossEntropyLoss :: forall a. Differentiable a => Vec a -> Int -> a
 crossEntropyLoss logits targetIdx = negate $ log prob
   where
-  probs = softmax logits
+  Vec probs = softmax logits
   prob = unsafePartial $ unsafeIndex probs targetIdx
 
 forward :: StateDict (ComputationGraph Number) -> Array Int -> ComputationGraph Number

@@ -2,11 +2,11 @@ module GPT where
 
 import Prelude
 
-import Data.Array (concatMap, length, range, replicate, slice, snoc, zipWith)
-import Data.Bifunctor (lmap)
-import Data.Foldable (foldl, sum)
-import Data.Int (toNumber)
 import Data.Array (unsafeIndex)
+import Data.Array as Array
+import Data.Bifunctor (lmap)
+import Data.Foldable (foldl, length, sum)
+import Data.Int (toNumber)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
 import Data.Tuple.Nested (type (/\), (/\))
@@ -22,8 +22,8 @@ derive instance Newtype TokenId _
 derive instance Newtype PosId _
 
 newtype KVCache a = KVCache
-  { keys :: Array (Array a)
-  , values :: Array (Array a)
+  { keys :: Array (Vec a)
+  , values :: Array (Vec a)
   }
 
 derive instance Newtype (KVCache a) _
@@ -35,56 +35,56 @@ instance Semigroup (KVCache a) where
 instance Monoid (KVCache a) where
   mempty = KVCache { keys: [], values: [] }
 
-softmax :: forall a. Differentiable a => Array a -> Array a
+softmax :: forall a. Differentiable a => Vec a -> Vec a
 softmax logits = (_ / sum exps) <$> exps
   where
   maxVal = foldl max (fromNumber (-N.infinity)) logits
   exps = (exp <<< (_ - maxVal)) <$> logits
 
-rmsnorm :: forall a. Differentiable a => Array a -> Array a
+rmsnorm :: forall a. Differentiable a => Vec a -> Vec a
 rmsnorm x = ((*) scale) <$> x
   where
   ms = sum (square <$> x) / fromNumber (toNumber (length x))
   scale = pow (ms + fromNumber 1e-5) (-0.5)
   square = join mul
 
-withResidual :: forall f a. Functor f => Differentiable a => (Array a -> f (Array a)) -> Array a -> f (Array a)
-withResidual f x = map (zipWith (+) x) (f $ rmsnorm x)
+withResidual :: forall f a. Functor f => Differentiable a => (Vec a -> f (Vec a)) -> Vec a -> f (Vec a)
+withResidual f x = map (_ + x) (f $ rmsnorm x)
 
 embed :: forall a. Matrix a -> Int -> Vec a
-embed = map Vec <<< unsafePartial unsafeIndex
+embed (Vec rows) = unsafePartial unsafeIndex rows
 
-headAttn :: forall a. Differentiable a => Int -> Int -> Array a -> Array (Array a) -> Array (Array a) -> Array a
+headAttn :: forall a. Differentiable a => Int -> Int -> Vec a -> Array (Vec a) -> Array (Vec a) -> Vec a
 headAttn h headDim q keys values = headOut
   where
   hs = h * headDim
-  qH = slice hs (hs + headDim) q
-  kH = slice hs (hs + headDim) <$> keys
-  vH = slice hs (hs + headDim) <$> values
-  attnLogits = (\k -> dot qH k / pow (fromNumber (toNumber headDim)) 0.5) <$> kH
+  qH = Vec $ Array.slice hs (hs + headDim) (unwrap q)
+  kH = Vec <<< Array.slice hs (hs + headDim) <<< unwrap <$> keys
+  vH = Vec <<< Array.slice hs (hs + headDim) <<< unwrap <$> values
+  attnLogits = Vec $ (\k -> dot qH k / pow (fromNumber (toNumber headDim)) 0.5) <$> kH
   attnWeights = softmax attnLogits
-  headOut = foldl (zipWith (+)) (replicate headDim zero) (zipWith (\w v -> (_ * w) <$> v) attnWeights vH)
+  headOut = foldl (+) (Vec $ Array.replicate headDim zero) (Array.zipWith (\w v -> (_ * w) <$> v) (unwrap attnWeights) vH)
 
-multiHeadAttn :: forall a. Differentiable a => LayerWeights a -> Int -> KVCache a -> Array a -> KVCache a /\ Array a
+multiHeadAttn :: forall a. Differentiable a => LayerWeights a -> Int -> KVCache a -> Vec a -> KVCache a /\ Vec a
 multiHeadAttn weights headDim cache x = cache' /\ x'
   where
   w = unwrap weights
   q = linear w.attnWq x
   k = linear w.attnWk x
   v = linear w.attnWv x
-  cache' = KVCache { keys: snoc (unwrap cache).keys k, values: snoc (unwrap cache).values v }
+  cache' = KVCache { keys: Array.snoc (unwrap cache).keys k, values: Array.snoc (unwrap cache).values v }
   nHead = length q / headDim
-  xAttn = concatMap (\h -> headAttn h headDim q (unwrap cache').keys (unwrap cache').values) (range 0 $ nHead - 1)
+  xAttn = Vec $ Array.concatMap (unwrap <<< (\h -> headAttn h headDim q (unwrap cache').keys (unwrap cache').values)) (Array.range 0 $ nHead - 1)
   x' = linear w.attnWo xAttn
 
-mlp :: forall a. Differentiable a => LayerWeights a -> Array a -> Array a
+mlp :: forall a. Differentiable a => LayerWeights a -> Vec a -> Vec a
 mlp weights = linear (unwrap weights).mlpFc2 <<< map relu <<< linear (unwrap weights).mlpFc1
 
-gpt :: forall a. Differentiable a => StateDict a -> Int -> Array (KVCache a) -> TokenId -> PosId -> Array a /\ Array (KVCache a)
+gpt :: forall a. Differentiable a => StateDict a -> Int -> Array (KVCache a) -> TokenId -> PosId -> Vec a /\ Array (KVCache a)
 gpt stateDict headDim caches tokId posId = logits /\ caches'
   where
   sd = unwrap stateDict
-  x = unwrap $ embed sd.wte (unwrap tokId) + embed sd.wpe (unwrap posId)
-  step (cs /\ v) (w /\ c) = lmap (snoc cs) $ (withResidual (multiHeadAttn w headDim c) >=> withResidual (\y -> mempty /\ mlp w y)) v
-  caches' /\ x' = foldl step ([] /\ x) (zipWith (/\) sd.layers caches)
+  x = embed sd.wte (unwrap tokId) + embed sd.wpe (unwrap posId)
+  step (cs /\ v) (w /\ c) = lmap (Array.snoc cs) $ (withResidual (multiHeadAttn w headDim c) >=> withResidual (\y -> mempty /\ mlp w y)) v
+  caches' /\ x' = foldl step ([] /\ x) (Array.zipWith (/\) sd.layers caches)
   logits = linear sd.lmHead x'
