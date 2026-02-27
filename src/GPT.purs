@@ -23,19 +23,15 @@ newtype PosId = PosId Int
 derive instance Newtype TokenId _
 derive instance Newtype PosId _
 
-newtype KVCache a = KVCache
-  { keys :: List (Vec a)
-  , values :: List (Vec a)
-  }
+newtype KVCache a = KVCache (List { key :: Vec a, value :: Vec a })
 
 derive instance Newtype (KVCache a) _
 
 instance Semigroup (KVCache a) where
-  append (KVCache c1) (KVCache c2) =
-    KVCache { keys: c1.keys <> c2.keys, values: c1.values <> c2.values }
+  append (KVCache c1) (KVCache c2) = KVCache $ c1 <> c2
 
 instance Monoid (KVCache a) where
-  mempty = KVCache { keys: Nil, values: Nil }
+  mempty = KVCache Nil
 
 softmax :: forall a. Differentiable a => Vec a -> Vec a
 softmax logits = (_ / sum exps) <$> exps
@@ -56,16 +52,16 @@ withResidual f x = map (_ + x) (f $ rmsnorm x)
 embed :: forall a. Matrix a -> Int -> Vec a
 embed (Vec rows) = unsafePartial unsafeIndex rows
 
-headAttn :: forall a. Differentiable a => Int -> Int -> Vec a -> List (Vec a) -> List (Vec a) -> Vec a
-headAttn h headDim q keys values = headOut
+headAttn :: forall a. Differentiable a => Int -> Int -> Vec a -> List { key :: Vec a, value :: Vec a } -> Vec a
+headAttn h headDim q cache = headOut
   where
   hs = h * headDim
   qH = Vec $ Array.slice hs (hs + headDim) (unwrap q)
-  kH = Vec <<< Array.slice hs (hs + headDim) <<< unwrap <$> keys
-  vH = Vec <<< Array.slice hs (hs + headDim) <<< unwrap <$> values
-  attnLogits = Vec <<< List.toUnfoldable $ (\k -> dot qH k / pow (fromNumber (toNumber headDim)) 0.5) <$> kH
+  keys = Vec <<< Array.slice hs (hs + headDim) <<< unwrap <<< _.key <$> cache
+  values = Vec <<< Array.slice hs (hs + headDim) <<< unwrap <<< _.value <$> cache
+  attnLogits = Vec <<< List.toUnfoldable $ (\k -> dot qH k / pow (fromNumber (toNumber headDim)) 0.5) <$> keys
   attnWeights = softmax attnLogits
-  headOut = foldl (+) (Vec $ Array.replicate headDim zero) $ List.zipWith (\w v -> (_ * w) <$> v) (List.fromFoldable $ unwrap attnWeights) vH
+  headOut = foldl (+) (Vec $ Array.replicate headDim zero) $ List.zipWith (\w v -> (_ * w) <$> v) (List.fromFoldable $ unwrap attnWeights) values
 
 multiHeadAttn :: forall a. Differentiable a => LayerWeights a -> Int -> KVCache a -> Vec a -> KVCache a /\ Vec a
 multiHeadAttn weights headDim cache x = cache' /\ x'
@@ -74,9 +70,9 @@ multiHeadAttn weights headDim cache x = cache' /\ x'
   q = linear w.attnWq x
   k = linear w.attnWk x
   v = linear w.attnWv x
-  cache' = KVCache { keys: k : (unwrap cache).keys, values: v : (unwrap cache).values }
+  cache' = KVCache $ { key: k, value: v } : unwrap cache
   nHead = length q / headDim
-  xAttn = Vec $ Array.concatMap (unwrap <<< (\h -> headAttn h headDim q (unwrap cache').keys (unwrap cache').values)) (Array.range 0 $ nHead - 1)
+  xAttn = Vec $ Array.concatMap (unwrap <<< (\h -> headAttn h headDim q (unwrap cache'))) (Array.range 0 $ nHead - 1)
   x' = linear w.attnWo xAttn
 
 mlp :: forall a. Differentiable a => LayerWeights a -> Vec a -> Vec a
