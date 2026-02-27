@@ -46,9 +46,9 @@ softmax logits = (_ / sum exps) <$> exps
 rmsnorm :: forall a. Differentiable a => Vec a -> Vec a
 rmsnorm x = ((*) scale) <$> x
   where
-  ms = sum (square <$> x) / fromNumber (toNumber (length x))
-  scale = pow (ms + fromNumber 1e-5) (-0.5)
-  square = join mul
+  ms = dot x x / fromNumber (toNumber (length x))
+  scale = pow (ms + eps) (-0.5)
+  eps = fromNumber 1e-5
 
 withResidual :: forall f a. Functor f => Differentiable a => (Vec a -> f (Vec a)) -> Vec a -> f (Vec a)
 withResidual f x = map (_ + x) (f $ rmsnorm x)
