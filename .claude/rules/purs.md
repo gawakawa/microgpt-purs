@@ -5,6 +5,10 @@ paths:
 
 # PureScript Code Style Rules
 
+## Local Bindings
+
+Prefer `where` over `let...in` for local bindings.
+
 ## Pipeline-First Design
 
 Define functions as pipelines of smaller sub-functions. Use composition (`<<<`, `>=>`, `<$>`, `>>=`) instead of sequential bindings in `where` clauses.
