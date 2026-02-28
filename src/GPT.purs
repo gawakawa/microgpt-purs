@@ -11,6 +11,7 @@ import Data.List as List
 import Data.Foldable (fold, foldl, length, sum)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
+import Data.Tuple (uncurry)
 import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
 import Data.DivisionRing (recip)
@@ -62,21 +63,19 @@ attention query keys = weightedSum $ softmax $ (_ * scale) <$> linear keys query
   where
   scale = recip $ sqrt $ fromInt $ length query
 
--- | Compute attention for the h-th head.
-singleHeadAttn :: forall a. Differentiable a => Int -> Query a -> KVCache a -> Int -> Value a
-singleHeadAttn headDim q (KVCache cache) h = attention qH keys values
+-- | Extract Q/K/V slices for the h-th head.
+headSlices :: forall a. Int -> Query a -> KVCache a -> Int -> Query a /\ Vec (Key a) /\ Vec (Value a)
+headSlices headDim q (KVCache cache) h =
+  sliceHead q /\ fromFoldable (sliceHead <<< _.key <$> cache) /\ fromFoldable (sliceHead <<< _.value <$> cache)
   where
-  qH = slice hs headDim q
-  keys = fromFoldable $ slice hs headDim <<< _.key <$> cache
-  values = fromFoldable $ slice hs headDim <<< _.value <$> cache
-  hs = h * headDim
+  sliceHead = slice (h * headDim) headDim
 
 -- | Compute multi-head attention with KV caching.
 multiHeadAttn :: forall a. Differentiable a => LayerWeights a -> Int -> Vec a -> State (KVCache a) (Vec a)
 multiHeadAttn weights headDim x = do
   modify_ \(KVCache list) -> KVCache $ { key: k, value: v } : list
   kvCache <- get
-  let headResults = singleHeadAttn headDim q kvCache <$> heads
+  let headResults = uncurry (uncurry <<< attention) <<< headSlices headDim q kvCache <$> heads
   pure $ linear w.attnWo $ fold headResults
   where
   w = unwrap weights
