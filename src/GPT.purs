@@ -3,13 +3,13 @@ module GPT where
 import Prelude
 
 import Control.Monad.State (State, runState)
-import Control.Monad.State.Class (gets, modify_)
+import Control.Monad.State.Class (get, modify_)
 import Data.Array (unsafeIndex)
 import Data.Array as Array
 import Data.Enum (enumFromTo)
 import Data.List (List(..), (:))
 import Data.List as List
-import Data.Foldable (foldMap, foldl, length, sum)
+import Data.Foldable (fold, foldl, length, sum)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
 import Data.Tuple.Nested (type (/\), (/\))
@@ -23,6 +23,10 @@ newtype PosId = PosId Int
 
 derive instance Newtype TokenId _
 derive instance Newtype PosId _
+
+type Query a = Vec a
+type Key a = Vec a
+type Value a = Vec a
 
 newtype KVCache a = KVCache (List { key :: Vec a, value :: Vec a })
 
@@ -53,22 +57,33 @@ withResidual f x = map (_ + x) (f $ rmsnorm x)
 embed :: forall a. Matrix a -> Int -> Vec a
 embed (Vec rows) = unsafePartial unsafeIndex rows
 
-headAttn :: forall a. Differentiable a => Int -> Int -> Vec a -> List { key :: Vec a, value :: Vec a } -> Vec a
-headAttn h headDim q cache = headOut
+-- | Compute scaled dot-product attention.
+attention :: forall a. Differentiable a => Query a -> List (Key a) -> List (Value a) -> Value a
+attention query keys values =
+  foldl (+) zeroVec $ List.zipWith (\w v -> (_ * w) <$> v) (List.fromFoldable $ unwrap weights) values
+  where
+  dim = length query
+  zeroVec = Vec $ Array.replicate dim zero
+  scale = pow (fromInt dim) 0.5
+  scores = Vec <<< List.toUnfoldable $ (\k -> dot query k / scale) <$> keys
+  weights = softmax scores
+
+-- | Compute attention for the h-th head.
+singleHeadAttn :: forall a. Differentiable a => Int -> Query a -> KVCache a -> Int -> Value a
+singleHeadAttn headDim q (KVCache cache) h = attention qH keys values
   where
   hs = h * headDim
   qH = Vec $ Array.slice hs (hs + headDim) (unwrap q)
   keys = Vec <<< Array.slice hs (hs + headDim) <<< unwrap <<< _.key <$> cache
   values = Vec <<< Array.slice hs (hs + headDim) <<< unwrap <<< _.value <$> cache
-  attnLogits = Vec <<< List.toUnfoldable $ (\k -> dot qH k / pow (fromInt headDim) 0.5) <$> keys
-  attnWeights = softmax attnLogits
-  headOut = foldl (+) (Vec $ Array.replicate headDim zero) $ List.zipWith (\w v -> (_ * w) <$> v) (List.fromFoldable $ unwrap attnWeights) values
 
+-- | Compute multi-head attention with KV caching.
 multiHeadAttn :: forall a. Differentiable a => LayerWeights a -> Int -> Vec a -> State (KVCache a) (Vec a)
 multiHeadAttn weights headDim x = do
   modify_ \(KVCache list) -> KVCache $ { key: k, value: v } : list
-  kvList <- gets unwrap
-  pure $ linear w.attnWo $ foldMap (\h -> headAttn h headDim q kvList) heads
+  kvCache <- get
+  let headResults = singleHeadAttn headDim q kvCache <$> heads
+  pure $ linear w.attnWo $ fold headResults
   where
   w = unwrap weights
   q = linear w.attnWq x
