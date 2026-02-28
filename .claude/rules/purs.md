@@ -1,3 +1,8 @@
+---
+paths:
+  - "**/*.purs"
+---
+
 # PureScript Code Style Rules
 
 ## Pipeline-First Design
