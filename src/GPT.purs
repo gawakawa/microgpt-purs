@@ -5,7 +5,6 @@ import Prelude
 import Control.Monad.State (State, runState)
 import Control.Monad.State.Class (get, modify_)
 import Data.Array (unsafeIndex)
-import Data.Array as Array
 import Data.Enum (enumFromTo)
 import Data.List (List(..), (:))
 import Data.List as List
@@ -14,9 +13,9 @@ import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
 import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
-import Data.DivisionRing (class DivisionRing, recip)
+import Data.DivisionRing (recip)
 import ComputationGraph (class Differentiable, exp, fromInt, fromNumber, relu, sqrt)
-import Matrix (Matrix, Vec(..), dot, linear, zeroVec)
+import Matrix (Matrix, Vec(..), dot, fromFoldable, linear, slice, weightedSum)
 import Params (LayerWeights(..), StateDict(..))
 
 newtype TokenId = TokenId Int
@@ -45,36 +44,32 @@ softmax logits = (_ / sum exps) <$> exps
   maxVal = foldl max (fromNumber (-N.infinity)) logits
   exps = (exp <<< (_ - maxVal)) <$> logits
 
-rmsnorm :: forall a. DivisionRing a => Differentiable a => Vec a -> Vec a
+rmsnorm :: forall a. Differentiable a => Vec a -> Vec a
 rmsnorm x = (_ * scale) <$> x
   where
   scale = recip $ sqrt $ dot x x / fromInt (length x) + eps
   eps = fromNumber 1e-5
 
-withResidual :: forall f a. Functor f => DivisionRing a => Differentiable a => (Vec a -> f (Vec a)) -> Vec a -> f (Vec a)
+withResidual :: forall f a. Functor f => Differentiable a => (Vec a -> f (Vec a)) -> Vec a -> f (Vec a)
 withResidual f x = map (_ + x) (f $ rmsnorm x)
 
 embed :: forall a. Matrix a -> Int -> Vec a
 embed (Vec rows) = unsafePartial unsafeIndex rows
 
 -- | Compute scaled dot-product attention.
-attention :: forall a. Differentiable a => Query a -> List (Key a) -> List (Value a) -> Value a
-attention query keys values =
-  foldl (+) (zeroVec dim) $ List.zipWith (\w v -> (_ * w) <$> v) (List.fromFoldable $ unwrap weights) values
+attention :: forall a. Differentiable a => Query a -> Vec (Key a) -> Vec (Value a) -> Value a
+attention query keys values = weightedSum (softmax $ (_ * scale) <$> linear keys query) values
   where
-  dim = length query
-  scale = sqrt $ fromInt dim
-  scores = Vec <<< List.toUnfoldable $ (\k -> dot query k / scale) <$> keys
-  weights = softmax scores
+  scale = recip $ sqrt $ fromInt $ length query
 
 -- | Compute attention for the h-th head.
 singleHeadAttn :: forall a. Differentiable a => Int -> Query a -> KVCache a -> Int -> Value a
 singleHeadAttn headDim q (KVCache cache) h = attention qH keys values
   where
+  qH = slice hs headDim q
+  keys = fromFoldable $ slice hs headDim <<< _.key <$> cache
+  values = fromFoldable $ slice hs headDim <<< _.value <$> cache
   hs = h * headDim
-  qH = Vec $ Array.slice hs (hs + headDim) (unwrap q)
-  keys = Vec <<< Array.slice hs (hs + headDim) <<< unwrap <<< _.key <$> cache
-  values = Vec <<< Array.slice hs (hs + headDim) <<< unwrap <<< _.value <$> cache
 
 -- | Compute multi-head attention with KV caching.
 multiHeadAttn :: forall a. Differentiable a => LayerWeights a -> Int -> Vec a -> State (KVCache a) (Vec a)
@@ -97,7 +92,7 @@ mlp weights = linear w.mlpFc2 <<< map relu <<< linear w.mlpFc1
   where
   w = unwrap weights
 
-gpt :: forall a. DivisionRing a => Differentiable a => StateDict a -> Int -> List (KVCache a) -> TokenId -> PosId -> Vec a /\ List (KVCache a)
+gpt :: forall a. Differentiable a => StateDict a -> Int -> List (KVCache a) -> TokenId -> PosId -> Vec a /\ List (KVCache a)
 gpt stateDict headDim caches tokId posId = logits /\ caches'
   where
   sd = unwrap stateDict

@@ -3,8 +3,10 @@ module Matrix where
 import Prelude
 
 import Data.Array (replicate, zipWith)
-import Data.Foldable (class Foldable, sum)
-import Data.Newtype (class Newtype)
+import Data.Array as Array
+import Data.Foldable (class Foldable, foldl, length, sum)
+import Data.Maybe (maybe)
+import Data.Newtype (class Newtype, unwrap)
 import Data.Traversable (class Traversable)
 
 newtype Vec a = Vec (Array a)
@@ -33,3 +35,16 @@ linear (Vec w) x = Vec $ (\row -> dot row x) <$> w
 
 zeroVec :: forall a. Semiring a => Int -> Vec a
 zeroVec n = Vec $ replicate n zero
+
+fromFoldable :: forall f a. Foldable f => f a -> Vec a
+fromFoldable = Vec <<< Array.fromFoldable
+
+slice :: forall a. Int -> Int -> Vec a -> Vec a
+slice start len = Vec <<< Array.slice start (start + len) <<< unwrap
+
+-- | Compute weighted sum: Σ wᵢ * vᵢ (linear combination of rows)
+weightedSum :: forall a. Semiring a => Vec a -> Matrix a -> Vec a
+weightedSum (Vec ws) (Vec rows) = foldl (+) (zeroVec dim) scaled
+  where
+  dim = maybe 0 length $ Array.head rows
+  scaled = zipWith (\w row -> (_ * w) <$> row) ws rows

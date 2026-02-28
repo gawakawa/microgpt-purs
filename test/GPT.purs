@@ -8,10 +8,9 @@ import Data.Foldable (all, sum)
 import Data.Int (toNumber)
 import Data.Number (sqrt)
 import Data.Number.Approximate ((≅))
-import Data.List as List
 import GPT (attention, embed, mlp, rmsnorm, softmax)
 import Partial.Unsafe (unsafePartial)
-import Matrix (Vec(..), dot)
+import Matrix (Vec(..), dot, fromFoldable)
 import Params (LayerWeights(..))
 import Test.Unit (TestSuite, suite, test)
 import Test.Unit.Assert as Assert
@@ -90,8 +89,8 @@ tests = suite "GPT" do
     test "matching key gets high attention weight" do
       let
         query = Vec [1.0, 0.0]
-        keys = List.fromFoldable [Vec [1.0, 0.0], Vec [0.0, 1.0]]
-        values = List.fromFoldable [Vec [1.0, 0.0], Vec [0.0, 1.0]]
+        keys = fromFoldable [Vec [1.0, 0.0], Vec [0.0, 1.0]]
+        values = fromFoldable [Vec [1.0, 0.0], Vec [0.0, 1.0]]
         Vec result = attention query keys values
         v1 = unsafePartial $ unsafeIndex result 0
         v2 = unsafePartial $ unsafeIndex result 1
@@ -100,16 +99,16 @@ tests = suite "GPT" do
     test "orthogonal keys get low attention" do
       let
         query = Vec [1.0, 0.0]
-        keys = List.fromFoldable [Vec [0.0, 1.0]]
-        values = List.fromFoldable [Vec [1.0, 0.0]]
+        keys = fromFoldable [Vec [0.0, 1.0]]
+        values = fromFoldable [Vec [1.0, 0.0]]
         result = attention query keys values
       Assert.equal (Vec [1.0, 0.0]) result
 
     test "output dimension matches query dimension" do
       let
         query = Vec [1.0, 2.0, 3.0]
-        keys = List.fromFoldable [Vec [1.0, 0.0, 0.0], Vec [0.0, 1.0, 0.0]]
-        values = List.fromFoldable [Vec [1.0, 2.0, 3.0], Vec [4.0, 5.0, 6.0]]
+        keys = fromFoldable [Vec [1.0, 0.0, 0.0], Vec [0.0, 1.0, 0.0]]
+        values = fromFoldable [Vec [1.0, 2.0, 3.0], Vec [4.0, 5.0, 6.0]]
         Vec result = attention query keys values
         Vec queryArr = query
       Assert.equal (Array.length queryArr) $ Array.length result

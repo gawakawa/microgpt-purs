@@ -7,7 +7,7 @@ import Data.Foldable (class Foldable, foldl, foldMap, foldr)
 import Data.Int (toNumber)
 import Data.Number as N
 
-class (Ord a, EuclideanRing a) <= Differentiable a where
+class (Ord a, DivisionRing a, EuclideanRing a) <= Differentiable a where
   exp :: a -> a
   log :: a -> a
   pow :: a -> Number -> a
