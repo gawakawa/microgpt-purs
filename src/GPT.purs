@@ -32,21 +32,25 @@ type Hidden a = Vec a
 
 type KVCache a = List { key :: Key a, value :: Value a }
 
+-- | Compute softmax with numerical stability (subtract max before exp)
 softmax :: forall a. Differentiable a => Vec a -> Vec a
 softmax logits = (_ / sum exps) <$> exps
   where
   maxVal = foldl max (fromNumber (-N.infinity)) logits
   exps = (exp <<< (_ - maxVal)) <$> logits
 
+-- | Apply RMS normalization (root mean square layer norm without centering)
 rmsnorm :: forall a. Differentiable a => Vec a -> Vec a
 rmsnorm x = (_ * scale) <$> x
   where
   scale = recip $ sqrt $ dot x x / fromInt (length x) + eps
   eps = fromNumber 1e-5
 
+-- | Apply a sub-layer with residual connection: x + f(rmsnorm(x))
 withResidual :: forall f a. Functor f => Differentiable a => (Vec a -> f (Vec a)) -> Vec a -> f (Vec a)
 withResidual f x = map (_ + x) (f $ rmsnorm x)
 
+-- | Look up embedding vector by index
 embed :: forall a. Matrix a -> Int -> Vec a
 embed (Vec rows) = unsafePartial unsafeIndex rows
 
@@ -81,6 +85,7 @@ multiHeadAttn weights headDim x = do
   nHead = length q / headDim
   heads = range 0 $ nHead - 1
 
+-- | Apply feed-forward network: two linear layers with ReLU activation
 mlp :: forall a. Differentiable a => LayerWeights a -> Vec a -> Vec a
 mlp weights = linear w.mlpFc2 <<< map relu <<< linear w.mlpFc1
   where
