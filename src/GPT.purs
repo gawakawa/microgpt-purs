@@ -11,7 +11,7 @@ import Data.List as List
 import Data.Foldable (fold, foldl, length, sum)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
-import Data.Bifunctor (rmap)
+import Data.Bifunctor (lmap, rmap)
 import Data.Tuple (uncurry)
 import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
@@ -58,6 +58,10 @@ withResidual f x = map (_ + x) (f $ rmsnorm x)
 
 embed :: forall a. Matrix a -> Int -> Vec a
 embed (Vec rows) = unsafePartial unsafeIndex rows
+
+-- | Compute combined token and position embeddings
+tokenPosEmbedding :: forall a. Differentiable a => Matrix a -> Matrix a -> TokenId -> PosId -> Hidden a
+tokenPosEmbedding wte wpe tokId posId = embed wte (unwrap tokId) + embed wpe (unwrap posId)
 
 -- | Compute scaled dot-product attention.
 attention :: forall a. Differentiable a => Query a -> Vec (Key a) -> Vec (Value a) -> Value a
@@ -110,8 +114,6 @@ processLayers headDim layers caches input = foldl step (input /\ Nil) $ List.zip
 -- | Compute next-token logits with updated KV caches for autoregressive generation
 gpt :: forall a. Differentiable a => StateDict a -> Int -> List (KVCache a) -> TokenId -> PosId -> Vec a /\ List (KVCache a)
 gpt stateDict headDim caches tokId posId =
-  linear sd.lmHead finalHidden /\ updatedCaches
+  lmap (linear sd.lmHead) $ processLayers headDim sd.layers caches $ tokenPosEmbedding sd.wte sd.wpe tokId posId
   where
   sd = unwrap stateDict
-  embeddings = embed sd.wte (unwrap tokId) + embed sd.wpe (unwrap posId)
-  finalHidden /\ updatedCaches = processLayers headDim sd.layers caches embeddings
