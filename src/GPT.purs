@@ -10,12 +10,11 @@ import Data.Enum (enumFromTo)
 import Data.List (List(..), (:))
 import Data.List as List
 import Data.Foldable (foldMap, foldl, length, sum)
-import Data.Int (toNumber)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
 import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
-import ComputationGraph (class Differentiable, exp, fromNumber, pow, relu)
+import ComputationGraph (class Differentiable, exp, fromInt, fromNumber, pow, relu)
 import Matrix (Matrix, Vec(..), dot, linear)
 import Params (LayerWeights(..), StateDict(..))
 
@@ -44,7 +43,7 @@ softmax logits = (_ / sum exps) <$> exps
 rmsnorm :: forall a. Differentiable a => Vec a -> Vec a
 rmsnorm x = ((*) scale) <$> x
   where
-  ms = dot x x / fromNumber (toNumber (length x))
+  ms = dot x x / fromInt (length x)
   scale = pow (ms + eps) (-0.5)
   eps = fromNumber 1e-5
 
@@ -61,7 +60,7 @@ headAttn h headDim q cache = headOut
   qH = Vec $ Array.slice hs (hs + headDim) (unwrap q)
   keys = Vec <<< Array.slice hs (hs + headDim) <<< unwrap <<< _.key <$> cache
   values = Vec <<< Array.slice hs (hs + headDim) <<< unwrap <<< _.value <$> cache
-  attnLogits = Vec <<< List.toUnfoldable $ (\k -> dot qH k / pow (fromNumber (toNumber headDim)) 0.5) <$> keys
+  attnLogits = Vec <<< List.toUnfoldable $ (\k -> dot qH k / pow (fromInt headDim) 0.5) <$> keys
   attnWeights = softmax attnLogits
   headOut = foldl (+) (Vec $ Array.replicate headDim zero) $ List.zipWith (\w v -> (_ * w) <$> v) (List.fromFoldable $ unwrap attnWeights) values
 

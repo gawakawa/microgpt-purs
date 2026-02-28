@@ -4,6 +4,7 @@ import Prelude
 
 import Control.Comonad (class Comonad, class Extend, extend, extract)
 import Data.Foldable (class Foldable, foldl, foldMap, foldr)
+import Data.Int (toNumber)
 import Data.Number as N
 
 class (Ord a, EuclideanRing a) <= Differentiable a where
@@ -12,6 +13,7 @@ class (Ord a, EuclideanRing a) <= Differentiable a where
   pow :: a -> Number -> a
   relu :: a -> a
   fromNumber :: Number -> a
+  fromInt :: Int -> a
 
 instance Differentiable Number where
   exp = N.exp
@@ -19,6 +21,7 @@ instance Differentiable Number where
   pow = N.pow
   relu = max 0.0
   fromNumber = identity
+  fromInt = toNumber
 
 data ComputationGraph a
   = Val a
@@ -55,6 +58,7 @@ instance Differentiable (ComputationGraph Number) where
   pow a n = Pow (N.pow (extract a) n) a n
   relu a = Relu (max 0.0 $ extract a) a
   fromNumber = Val
+  fromInt = Val <<< toNumber
 
 instance Show a => Show (ComputationGraph a) where
   show (Val v) = "(Val " <> show v <> ")"
