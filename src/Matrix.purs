@@ -2,7 +2,7 @@ module Matrix where
 
 import Prelude
 
-import Data.Array (zipWith)
+import Data.Array (replicate, zipWith)
 import Data.Foldable (class Foldable, sum)
 import Data.Newtype (class Newtype)
 import Data.Traversable (class Traversable)
@@ -30,3 +30,6 @@ dot u v = sum $ u * v
 
 linear :: forall a. Semiring a => Matrix a -> Vec a -> Vec a
 linear (Vec w) x = Vec $ (\row -> dot row x) <$> w
+
+zeroVec :: forall a. Semiring a => Int -> Vec a
+zeroVec n = Vec $ replicate n zero

@@ -15,7 +15,7 @@ import Data.Number as N
 import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
 import ComputationGraph (class Differentiable, exp, fromInt, fromNumber, pow, relu)
-import Matrix (Matrix, Vec(..), dot, linear)
+import Matrix (Matrix, Vec(..), dot, linear, zeroVec)
 import Params (LayerWeights(..), StateDict(..))
 
 newtype TokenId = TokenId Int
@@ -60,10 +60,9 @@ embed (Vec rows) = unsafePartial unsafeIndex rows
 -- | Compute scaled dot-product attention.
 attention :: forall a. Differentiable a => Query a -> List (Key a) -> List (Value a) -> Value a
 attention query keys values =
-  foldl (+) zeroVec $ List.zipWith (\w v -> (_ * w) <$> v) (List.fromFoldable $ unwrap weights) values
+  foldl (+) (zeroVec dim) $ List.zipWith (\w v -> (_ * w) <$> v) (List.fromFoldable $ unwrap weights) values
   where
   dim = length query
-  zeroVec = Vec $ Array.replicate dim zero
   scale = pow (fromInt dim) 0.5
   scores = Vec <<< List.toUnfoldable $ (\k -> dot query k / scale) <$> keys
   weights = softmax scores
