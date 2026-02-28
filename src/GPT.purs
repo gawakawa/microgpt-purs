@@ -11,6 +11,7 @@ import Data.List as List
 import Data.Foldable (fold, foldl, length, sum)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
+import Data.Bifunctor (rmap)
 import Data.Tuple (uncurry)
 import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
@@ -28,6 +29,7 @@ derive instance Newtype PosId _
 type Query a = Vec a
 type Key a = Vec a
 type Value a = Vec a
+type Hidden a = Vec a
 
 newtype KVCache a = KVCache (List { key :: Vec a, value :: Vec a })
 
@@ -91,14 +93,25 @@ mlp weights = linear w.mlpFc2 <<< map relu <<< linear w.mlpFc1
   where
   w = unwrap weights
 
+-- | Apply one transformer block: attention and MLP with residual connections
+transformerBlock :: forall a. Differentiable a => LayerWeights a -> Int -> Hidden a -> State (KVCache a) (Hidden a)
+transformerBlock weights headDim = withResidual (multiHeadAttn weights headDim) >=> withResidual (pure <<< mlp weights)
+
+-- | Process input through all transformer layers
+processLayers :: forall a. Differentiable a
+  => Int -> List (LayerWeights a) -> List (KVCache a) -> Vec a
+  -> Hidden a /\ List (KVCache a)
+processLayers headDim layers caches input = foldl step (input /\ Nil) $ List.zipWith (/\) layers caches
+  where
+  step :: (Hidden a /\ List (KVCache a)) -> (LayerWeights a /\ KVCache a) -> Hidden a /\ List (KVCache a)
+  step (hidden /\ accCaches) (weights /\ cache) =
+    rmap (_ : accCaches) $ runState (transformerBlock weights headDim hidden) cache
+
+-- | Compute next-token logits with updated KV caches for autoregressive generation
 gpt :: forall a. Differentiable a => StateDict a -> Int -> List (KVCache a) -> TokenId -> PosId -> Vec a /\ List (KVCache a)
-gpt stateDict headDim caches tokId posId = logits /\ caches'
+gpt stateDict headDim caches tokId posId =
+  linear sd.lmHead finalHidden /\ updatedCaches
   where
   sd = unwrap stateDict
-  x = embed sd.wte (unwrap tokId) + embed sd.wpe (unwrap posId)
-  step (cs /\ v) (w /\ c) = (c' : cs) /\ result
-    where
-    stateComp = withResidual (multiHeadAttn w headDim) >=> withResidual (pure <<< mlp w)
-    result /\ c' = runState (stateComp v) c
-  caches' /\ x' = foldl step (Nil /\ x) $ List.zipWith (/\) sd.layers caches
-  logits = linear sd.lmHead x'
+  embeddings = embed sd.wte (unwrap tokId) + embed sd.wpe (unwrap posId)
+  finalHidden /\ updatedCaches = processLayers headDim sd.layers caches embeddings
