@@ -58,7 +58,7 @@ embed (Vec rows) = unsafePartial unsafeIndex rows
 
 -- | Compute scaled dot-product attention.
 attention :: forall a. Differentiable a => Query a -> Vec (Key a) -> Vec (Value a) -> Value a
-attention query keys values = weightedSum (softmax $ (_ * scale) <$> linear keys query) values
+attention query keys = weightedSum $ softmax $ (_ * scale) <$> linear keys query
   where
   scale = recip $ sqrt $ fromInt $ length query
 
