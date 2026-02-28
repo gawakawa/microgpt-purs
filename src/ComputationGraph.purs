@@ -11,6 +11,7 @@ class (Ord a, EuclideanRing a) <= Differentiable a where
   exp :: a -> a
   log :: a -> a
   pow :: a -> Number -> a
+  sqrt :: a -> a
   relu :: a -> a
   fromNumber :: Number -> a
   fromInt :: Int -> a
@@ -19,6 +20,7 @@ instance Differentiable Number where
   exp = N.exp
   log = N.log
   pow = N.pow
+  sqrt = N.sqrt
   relu = max 0.0
   fromNumber = identity
   fromInt = toNumber
@@ -47,15 +49,19 @@ instance Ring (ComputationGraph Number) where
 
 instance CommutativeRing (ComputationGraph Number)
 
+instance DivisionRing (ComputationGraph Number) where
+  recip a = Pow (1.0 / extract a) a (-1.0)
+
 instance EuclideanRing (ComputationGraph Number) where
   degree _ = 1
-  div a b = mul a (Pow (1.0 / extract b) b (-1.0))
+  div a b = mul a (recip b)
   mod _ _ = zero
 
 instance Differentiable (ComputationGraph Number) where
   exp a = Exp (N.exp $ extract a) a
   log a = Log (N.log $ extract a) a
   pow a n = Pow (N.pow (extract a) n) a n
+  sqrt a = pow a 0.5
   relu a = Relu (max 0.0 $ extract a) a
   fromNumber = Val
   fromInt = Val <<< toNumber
