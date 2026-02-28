@@ -30,15 +30,7 @@ type Key a = Vec a
 type Value a = Vec a
 type Hidden a = Vec a
 
-newtype KVCache a = KVCache (List { key :: Vec a, value :: Vec a })
-
-derive instance Newtype (KVCache a) _
-
-instance Semigroup (KVCache a) where
-  append (KVCache c1) (KVCache c2) = KVCache $ c1 <> c2
-
-instance Monoid (KVCache a) where
-  mempty = KVCache Nil
+type KVCache a = List { key :: Key a, value :: Value a }
 
 softmax :: forall a. Differentiable a => Vec a -> Vec a
 softmax logits = (_ / sum exps) <$> exps
@@ -70,7 +62,7 @@ attention query keys = weightedSum $ softmax $ (_ * scale) <$> linear keys query
 
 -- | Extract Q/K/V slices for the h-th head.
 headSlices :: forall a. Int -> Query a -> KVCache a -> Int -> Query a /\ Vec (Key a) /\ Vec (Value a)
-headSlices headDim q (KVCache cache) h =
+headSlices headDim q cache h =
   sliceHead q /\ fromFoldable (sliceHead <<< _.key <$> cache) /\ fromFoldable (sliceHead <<< _.value <$> cache)
   where
   sliceHead = slice (h * headDim) headDim
@@ -78,7 +70,7 @@ headSlices headDim q (KVCache cache) h =
 -- | Compute multi-head attention with KV caching.
 multiHeadAttn :: forall a. Differentiable a => LayerWeights a -> Int -> Vec a -> State (KVCache a) (Vec a)
 multiHeadAttn weights headDim x = do
-  modify_ \(KVCache list) -> KVCache $ { key: k, value: v } : list
+  modify_ \cache -> { key: k, value: v } : cache
   kvCache <- get
   pure $ linear w.attnWo $ fold $ uncurry (uncurry <<< attention) <<< headSlices headDim q kvCache <$> heads
   where
