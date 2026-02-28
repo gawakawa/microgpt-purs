@@ -3,7 +3,9 @@ module Inference where
 import Prelude
 
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
-import Data.Array (findIndex, replicate, snoc)
+import Data.Array (findIndex, snoc)
+import Data.List (List)
+import Data.Unfoldable (replicate)
 import Data.Foldable (length)
 import Data.Maybe (fromMaybe)
 import Data.Newtype (unwrap)
@@ -28,11 +30,12 @@ inference params dataset = generate (blockSize - 1) initialCaches [] (bos /\ 0)
   vocab = buildVocab dataset
   bos = length vocab
   nLayer = length sd.layers
+  initialCaches :: List (KVCache Number)
   initialCaches = replicate nLayer mempty
   blockSize = length sd.wpe
   temperature = 0.5
 
-  generate :: Int -> Array (KVCache Number) -> Array Char -> (Int /\ Int) -> m String
+  generate :: Int -> List (KVCache Number) -> Array Char -> (Int /\ Int) -> m String
   generate 0 _ chars _ = pure $ fromCharArray chars
   generate n caches chars (tok /\ pos) = do
     let logits /\ caches' = gpt params sd.headDim caches (TokenId tok) (PosId pos)

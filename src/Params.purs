@@ -5,6 +5,7 @@ import Prelude
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
 import Control.Monad.Gen.Trans (Gen)
 import Data.Foldable (class Foldable, foldMap, foldl, foldr)
+import Data.List (List)
 import Data.Newtype (class Newtype)
 import Data.Number as N
 import Data.Traversable (class Traversable, traverse)
@@ -58,7 +59,7 @@ newtype StateDict a = StateDict
   { wte :: Matrix a
   , wpe :: Matrix a
   , lmHead :: Matrix a
-  , layers :: Array (LayerWeights a)
+  , layers :: List (LayerWeights a)
   , headDim :: Int
   }
 

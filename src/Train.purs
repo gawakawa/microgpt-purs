@@ -4,8 +4,11 @@ import Prelude
 
 import Control.Comonad (extract)
 import Control.Monad.Gen.Trans (Gen, shuffle)
-import Data.Array (drop, filter, fromFoldable, length, replicate, slice, unsafeIndex, zipWith)
-import Data.Foldable (class Foldable)
+import Data.Array (drop, filter, fromFoldable, slice, unsafeIndex, zipWith)
+import Data.Array as Array
+import Data.List (List)
+import Data.Unfoldable (replicate)
+import Data.Foldable (class Foldable, length)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Int (toNumber)
 import Data.Map (lookup)
@@ -19,7 +22,7 @@ import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
 import Matrix (Vec(..))
 import Params (LayerWeights, StateDict(..))
-import GPT (TokenId(..), PosId(..), softmax, gpt)
+import GPT (KVCache, TokenId(..), PosId(..), softmax, gpt)
 import Tokenizer (buildVocab, tokenize)
 import Autograd (GradMap, backward, buildDag)
 import ComputationGraph (class Differentiable, ComputationGraph(..), log)
@@ -52,7 +55,7 @@ type TrainState =
 train :: TrainState -> Int -> TrainState
 train state step = state { params = params', m = m', v = v' }
   where
-  doc = unsafePartial $ unsafeIndex state.dataset (step `mod` length state.dataset)
+  doc = unsafePartial $ unsafeIndex state.dataset (step `mod` Array.length state.dataset)
   tokens = tokenize [ doc ]
   loss = forward state.params tokens
   grads = unsafePartial $ (\p -> fromJust $ lookup p gradMap) <$> flatten state.params
@@ -72,9 +75,10 @@ forward params tokens = totalLoss
   where
   sd = unwrap params
   nLayer = length sd.layers
+  initialCaches :: List (KVCache (ComputationGraph Number))
   initialCaches = replicate nLayer mempty
-  inputs = slice 0 (length tokens - 1) tokens
-  targets = slice 1 (length tokens) tokens
+  inputs = slice 0 (Array.length tokens - 1) tokens
+  targets = slice 1 (Array.length tokens) tokens
 
   step pos (caches /\ lossAcc) (tok /\ target) = caches' /\ (lossAcc + loss)
     where

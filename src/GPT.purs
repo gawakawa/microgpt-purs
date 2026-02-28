@@ -84,14 +84,14 @@ mlp weights = linear w.mlpFc2 <<< map relu <<< linear w.mlpFc1
   where
   w = unwrap weights
 
-gpt :: forall a. Differentiable a => StateDict a -> Int -> Array (KVCache a) -> TokenId -> PosId -> Vec a /\ Array (KVCache a)
+gpt :: forall a. Differentiable a => StateDict a -> Int -> List (KVCache a) -> TokenId -> PosId -> Vec a /\ List (KVCache a)
 gpt stateDict headDim caches tokId posId = logits /\ caches'
   where
   sd = unwrap stateDict
   x = embed sd.wte (unwrap tokId) + embed sd.wpe (unwrap posId)
-  step (cs /\ v) (w /\ c) = Array.snoc cs c' /\ result
+  step (cs /\ v) (w /\ c) = (c' : cs) /\ result
     where
     stateComp = withResidual (multiHeadAttn w headDim) >=> withResidual (pure <<< mlp w)
     result /\ c' = runState (stateComp v) c
-  caches' /\ x' = foldl step ([] /\ x) (Array.zipWith (/\) sd.layers caches)
+  caches' /\ x' = foldl step (Nil /\ x) $ List.zipWith (/\) sd.layers caches
   logits = linear sd.lmHead x'
