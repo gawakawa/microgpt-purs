@@ -4,8 +4,7 @@ import Prelude
 
 import Control.Monad.State (State, runState)
 import Control.Monad.State.Class (get, modify_)
-import Data.Array (unsafeIndex)
-import Data.Enum (enumFromTo)
+import Data.Array (range, unsafeIndex)
 import Data.List (List(..), (:))
 import Data.List as List
 import Data.Foldable (fold, foldl, length, sum)
@@ -81,16 +80,14 @@ multiHeadAttn :: forall a. Differentiable a => LayerWeights a -> Int -> Vec a ->
 multiHeadAttn weights headDim x = do
   modify_ \(KVCache list) -> KVCache $ { key: k, value: v } : list
   kvCache <- get
-  let headResults = uncurry (uncurry <<< attention) <<< headSlices headDim q kvCache <$> heads
-  pure $ linear w.attnWo $ fold headResults
+  pure $ linear w.attnWo $ fold $ uncurry (uncurry <<< attention) <<< headSlices headDim q kvCache <$> heads
   where
   w = unwrap weights
   q = linear w.attnWq x
   k = linear w.attnWk x
   v = linear w.attnWv x
   nHead = length q / headDim
-  heads :: Array Int
-  heads = enumFromTo 0 $ nHead - 1
+  heads = range 0 $ nHead - 1
 
 mlp :: forall a. Differentiable a => LayerWeights a -> Vec a -> Vec a
 mlp weights = linear w.mlpFc2 <<< map relu <<< linear w.mlpFc1
