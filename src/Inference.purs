@@ -3,17 +3,18 @@ module Inference where
 import Prelude
 
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
+import Control.Monad.Loops (unfoldrM)
 import Control.Monad.State (StateT, evalStateT)
 import Control.Monad.State.Class (get, put)
 import Control.Monad.Trans.Class (lift)
-import Data.Array (cons, findIndex)
+import Data.Array (findIndex)
 import Data.Foldable (length)
 import Data.List (List)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
 import Data.String.CodeUnits (fromCharArray)
 import Data.Traversable (mapAccumL)
-import Data.Tuple.Nested ((/\))
+import Data.Tuple.Nested (type (/\), (/\))
 import Data.Unfoldable (replicate)
 import GPT (KVCache, PosId(..), TokenId(..), gpt, softmax)
 import Matrix (Vec(..))
@@ -46,21 +47,18 @@ predictNextToken params headDim temperature tok pos = do
 
 -- | Generate text that resembles the given dataset using trained weights
 inference :: forall m. MonadGen m => StateDict Number -> Array String -> m String
-inference params dataset = fromCharArray <$> evalStateT (generateLoop bos 0) initialCaches
+inference params dataset = fromCharArray <$> evalStateT (unfoldrM step (bos /\ 0)) initialCaches
   where
   sd = unwrap params
   vocab = buildVocab dataset
   bos = length vocab
   nLayer = length sd.layers
   initialCaches = replicate nLayer mempty
-  maxTokens = length sd.wpe - 1
   temperature = 0.5
 
-  generateLoop :: Int -> Int -> StateT (List (KVCache Number)) m (Array Char)
-  generateLoop tok pos
-    | pos >= maxTokens = pure []
-    | otherwise = do
-        nextTok <- predictNextToken params sd.headDim temperature tok pos
-        if nextTok == bos
-          then pure []
-          else cons (decode vocab nextTok) <$> generateLoop nextTok (pos + 1)
+  step :: Int /\ Int -> StateT (List (KVCache Number)) m (Maybe (Char /\ Int /\ Int))
+  step (tok /\ pos) = do
+    nextTok <- predictNextToken params sd.headDim temperature tok pos
+    pure $ if nextTok == bos
+      then Nothing
+      else Just $ decode vocab nextTok /\ nextTok /\ (pos + 1)

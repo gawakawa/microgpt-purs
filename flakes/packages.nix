@@ -36,6 +36,7 @@
           "generate-values"
           "hylograph-graph"
           "lcg"
+          "monad-loops"
           "node-buffer"
           "numbers"
           "node-fs"
