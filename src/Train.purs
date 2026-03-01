@@ -23,7 +23,7 @@ import Partial.Unsafe (unsafePartial)
 import Matrix (Vec(..))
 import Params (LayerWeights, StateDict(..))
 import GPT (KVCache, PosId(..), softmax, gpt)
-import Tokenizer (Token(..), buildVocab, tokenize)
+import Tokenizer (Token(..), tokenize)
 import Autograd (GradMap, backward, buildDag)
 import ComputationGraph (class Differentiable, ComputationGraph(..), log)
 

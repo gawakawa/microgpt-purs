@@ -19,7 +19,7 @@ import Data.Unfoldable (replicate)
 import GPT (KVCache, PosId(..), gpt, softmax)
 import Matrix (Vec(..))
 import Params (StateDict(..))
-import Tokenizer (Token(..), bos, buildVocab, decode)
+import Tokenizer (Token(..), bos, decode)
 
 -- | Sample a token index from probability distribution
 sample :: forall m. MonadGen m => Vec Number -> m Int
@@ -50,7 +50,6 @@ inference :: forall m. MonadGen m => StateDict Number -> Array String -> m Strin
 inference params dataset = fromCharArray <$> evalStateT (unfoldrM step (bos /\ 0)) initialCaches
   where
   sd = unwrap params
-  vocab = buildVocab dataset
   nLayer = length sd.layers
   initialCaches = replicate nLayer mempty
   temperature = 0.5
@@ -58,6 +57,4 @@ inference params dataset = fromCharArray <$> evalStateT (unfoldrM step (bos /\ 0
   step :: Token /\ Int -> StateT (List (KVCache Number)) m (Maybe (Char /\ Token /\ Int))
   step (tok /\ pos) = do
     nextTok <- predictNextToken params sd.headDim temperature tok pos
-    pure $ if nextTok == bos
-      then Nothing
-      else Just $ decode vocab nextTok /\ nextTok /\ (pos + 1)
+    pure $ (\c -> c /\ nextTok /\ (pos + 1)) <$> decode nextTok
