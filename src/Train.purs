@@ -60,9 +60,11 @@ type TrainState =
   , epsAdam :: Number
   }
 
+-- | Run training loop for numSteps iterations, cycling through the dataset
 train :: TrainState -> TrainState
 train state = foldlWithIndex trainStep state $ cycleN state.numSteps state.dataset
 
+-- | Execute one training step: forward pass, backward pass, and Adam update
 trainStep :: Int -> TrainState -> String -> TrainState
 trainStep step state doc = adamUpdate state step lrT
   $ extractGrads state.params $ backward $ forward state.params $ tokenize [ doc ]
