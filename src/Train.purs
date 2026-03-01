@@ -61,12 +61,10 @@ type TrainState =
   }
 
 train :: TrainState -> TrainState
-train state = foldlWithIndex step state $ cycleN state.numSteps state.dataset
-  where
-  step i s doc = trainStep s i doc
+train state = foldlWithIndex trainStep state $ cycleN state.numSteps state.dataset
 
-trainStep :: TrainState -> Int -> String -> TrainState
-trainStep state step doc = adamUpdate state step lrT
+trainStep :: Int -> TrainState -> String -> TrainState
+trainStep step state doc = adamUpdate state step lrT
   $ extractGrads state.params $ backward $ forward state.params $ tokenize [ doc ]
   where
   lrT = state.learningRate * (1.0 - toNumber step / toNumber state.numSteps)
