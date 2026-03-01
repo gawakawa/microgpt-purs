@@ -26,7 +26,7 @@ tests = suite "backward" do
       dag = buildDag node
       expected =
         Map.fromFoldable
-          [ a /\ 1.0, b /\ 1.0, node /\ 1.0 ] :: GradMap
+          [ a /\ 1.0, b /\ 1.0 ] :: GradMap
     Assert.equal expected (backward node dag)
 
   test "mul" do
@@ -37,7 +37,7 @@ tests = suite "backward" do
       dag = buildDag node
       expected =
         Map.fromFoldable
-          [ a /\ 5.0, b /\ 3.0, node /\ 1.0 ] :: GradMap
+          [ a /\ 5.0, b /\ 3.0 ] :: GradMap
     Assert.equal expected (backward node dag)
 
   test "pow" do
@@ -47,7 +47,7 @@ tests = suite "backward" do
       dag = buildDag node
       expected =
         Map.fromFoldable
-          [ a /\ 6.0, node /\ 1.0 ] :: GradMap
+          [ a /\ 6.0 ] :: GradMap
     Assert.equal expected (backward node dag)
 
   test "exp" do
@@ -57,7 +57,7 @@ tests = suite "backward" do
       dag = buildDag node
       expected =
         Map.fromFoldable
-          [ a /\ 1.0, node /\ 1.0 ] :: GradMap
+          [ a /\ 1.0 ] :: GradMap
     Assert.equal expected (backward node dag)
 
   test "log" do
@@ -67,7 +67,7 @@ tests = suite "backward" do
       dag = buildDag node
       expected =
         Map.fromFoldable
-          [ a /\ 1.0, node /\ 1.0 ] :: GradMap
+          [ a /\ 1.0 ] :: GradMap
     Assert.equal expected (backward node dag)
 
   test "relu positive" do
@@ -77,7 +77,7 @@ tests = suite "backward" do
       dag = buildDag node
       expected =
         Map.fromFoldable
-          [ a /\ 1.0, node /\ 1.0 ] :: GradMap
+          [ a /\ 1.0 ] :: GradMap
     Assert.equal expected (backward node dag)
 
   test "relu negative" do
@@ -87,7 +87,7 @@ tests = suite "backward" do
       dag = buildDag node
       expected =
         Map.fromFoldable
-          [ a /\ 0.0, node /\ 1.0 ] :: GradMap
+          [ a /\ 0.0 ] :: GradMap
     Assert.equal expected (backward node dag)
 
   test "nested" do
@@ -102,5 +102,5 @@ tests = suite "backward" do
       -- grad_b: 2.0 (from mul, g*a.val=1*2)
       expected =
         Map.fromFoldable
-          [ a /\ 4.0, b /\ 2.0, mul /\ 1.0, root /\ 1.0 ] :: GradMap
+          [ a /\ 4.0, b /\ 2.0 ] :: GradMap
     Assert.equal expected (backward root dag)

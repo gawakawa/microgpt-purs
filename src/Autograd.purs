@@ -7,10 +7,11 @@ import Data.Foldable (foldl)
 import Data.Graph.Weighted (fromEdges)
 import Data.Graph.Weighted.DAG (DAG, topologicalSort, unsafeFromWeightedDigraph)
 import Data.Map (Map, fromFoldableWith, lookup, singleton, unionWith)
+import Data.Map as Map
 import Data.Maybe (fromMaybe)
 import Data.Number as N
 import Data.Tuple.Nested (type (/\), (/\))
-import ComputationGraph (ComputationGraph(..))
+import ComputationGraph (ComputationGraph(..), isVal)
 
 type GradMap = Map (ComputationGraph Number) Number
 
@@ -30,8 +31,10 @@ propagate g = case _ of
   -- ∂max(0,a)/∂a = 1 if a>0, else 0
   Relu _ a -> [ a /\ (g * if extract a > 0.0 then 1.0 else 0.0) ]
 
+-- | Compute gradients for leaf nodes (Val) via backpropagation.
+-- | Returns a map from each leaf node to its gradient.
 backward :: ComputationGraph Number -> DAG (ComputationGraph Number) Unit -> GradMap
-backward root dag = foldl step (singleton root 1.0) (topologicalSort dag)
+backward root dag = Map.filterKeys isVal $ foldl step (singleton root 1.0) (topologicalSort dag)
   where
   step :: GradMap -> ComputationGraph Number -> GradMap
   step grads expr = fromMaybe grads do

@@ -103,3 +103,8 @@ instance Foldable ComputationGraph where
   foldMap f (Relu v a) = f v <> foldMap f a
   foldl fn z cg = foldl fn z (foldMap pure cg :: Array _)
   foldr fn z cg = foldr fn z (foldMap pure cg :: Array _)
+
+-- | Check if the node is a leaf (Val).
+isVal :: forall a. ComputationGraph a -> Boolean
+isVal (Val _) = true
+isVal _ = false
