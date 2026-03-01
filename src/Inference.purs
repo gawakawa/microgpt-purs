@@ -57,4 +57,4 @@ inference params dataset = fromCharArray <$> evalStateT (unfoldrM step (bos /\ 0
   step :: Token /\ Int -> StateT (List (KVCache Number)) m (Maybe (Char /\ Token /\ Int))
   step (tok /\ pos) = do
     nextTok <- predictNextToken params sd.headDim temperature tok pos
-    pure $ (\c -> c /\ nextTok /\ (pos + 1)) <$> decode nextTok
+    pure $ (_ /\ nextTok /\ (pos + 1)) <$> decode nextTok
