@@ -4,11 +4,11 @@ import Prelude
 
 import Control.Comonad (extract)
 import Control.Monad.Gen.Trans (Gen, shuffle)
-import Data.Array (drop, filter, fromFoldable, slice, unsafeIndex, zipWith)
+import Data.Array (drop, filter, fromFoldable, range, slice, unsafeIndex, zipWith)
 import Data.Array as Array
 import Data.List (List)
 import Data.Unfoldable (replicate)
-import Data.Foldable (class Foldable, length)
+import Data.Foldable (class Foldable, foldl, length)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Int (toNumber)
 import Data.Map (lookup)
@@ -52,17 +52,18 @@ type TrainState =
   , epsAdam :: Number
   }
 
-train :: TrainState -> Int -> TrainState
-train state step = state { params = params', m = m', v = v' }
+train :: TrainState -> TrainState
+train state = foldl step state (range 0 (state.numSteps - 1))
   where
-  doc = unsafePartial $ unsafeIndex state.dataset (step `mod` Array.length state.dataset)
-  tokens = tokenize [ doc ]
-  loss = forward state.params tokens
+  step s i = trainStep i s (unsafePartial $ unsafeIndex state.dataset (i `mod` Array.length state.dataset))
+
+trainStep :: Int -> TrainState -> String -> TrainState
+trainStep step state doc = adamUpdate state step lrT grads
+  where
   grads = unsafePartial $ (\p -> fromJust $ lookup p gradMap) <$> flatten state.params
-  dag = buildDag loss
-  gradMap = backward loss dag
+  gradMap = backward loss $ buildDag loss
+  loss = forward state.params $ tokenize [ doc ]
   lrT = state.learningRate * (1.0 - toNumber step / toNumber state.numSteps)
-  params' /\ m' /\ v' = adamUpdate state step lrT grads
 
 crossEntropyLoss :: forall a. Differentiable a => Vec a -> Int -> a
 crossEntropyLoss logits targetIdx = negate $ log prob
@@ -87,8 +88,8 @@ forward params tokens = totalLoss
 
   _ /\ totalLoss = foldlWithIndex step (initialCaches /\ zero) (zipWith (/\) inputs targets)
 
-adamUpdate :: TrainState -> Int -> Number -> Array Number -> StateDict (ComputationGraph Number) /\ Array Number /\ Array Number
-adamUpdate state step lrT grads = params' /\ m' /\ v'
+adamUpdate :: TrainState -> Int -> Number -> Array Number -> TrainState
+adamUpdate state step lrT grads = state { params = params', m = m', v = v' }
   where
   t = toNumber (step + 1)
 

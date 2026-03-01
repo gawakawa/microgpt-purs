@@ -4,8 +4,7 @@ import Prelude
 
 import Control.Comonad (extract)
 import Control.Monad.Gen.Trans (evalGen)
-import Data.Array (length, range, replicate)
-import Data.Foldable (foldl)
+import Data.Array (length, replicate)
 import Effect (Effect)
 import Effect.Aff (launchAff_)
 import Effect.Class (liftEffect)
@@ -42,7 +41,7 @@ main = launchAff_ do
           , beta2: 0.99
           , epsAdam: 1e-8
           }
-        finalState = foldl train initialState (range 0 (numSteps - 1))
+        finalState = train initialState
         trainedParams = extract <$> finalState.params
       inference trainedParams dataset
   pure unit
