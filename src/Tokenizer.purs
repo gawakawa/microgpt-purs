@@ -20,13 +20,13 @@ buildVocab :: Array String -> Array Char
 buildVocab = sort <<< nub <<< concatMap toCharArray
 
 bos :: Token
-bos = Token 26
+bos = Token $ on (-) toCharCode 'z' 'a' + 1
 
 encode :: Char -> Token
 encode c = Token $ on (-) toCharCode c 'a'
 
 decode :: Token -> Maybe Char
-decode (Token 26) = Nothing
+decode bos = Nothing
 decode (Token tok) = fromCharCode $ tok + toCharCode 'a'
 
 tokenize :: Array String -> Array Token
