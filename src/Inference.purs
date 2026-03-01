@@ -47,11 +47,9 @@ predictNextToken params headDim temperature tok pos = do
 
 -- | Generate text that resembles the given dataset using trained weights
 inference :: forall m. MonadGen m => StateDict Number -> Array String -> m String
-inference params dataset = fromCharArray <$> evalStateT (unfoldrM step (bos /\ 0)) initialCaches
+inference params dataset = fromCharArray <$> evalStateT (unfoldrM step (bos /\ 0)) (replicate (length sd.layers) mempty)
   where
   sd = unwrap params
-  nLayer = length sd.layers
-  initialCaches = replicate nLayer mempty
   temperature = 0.5
 
   step :: Token /\ Int -> StateT (List (KVCache Number)) m (Maybe (Char /\ Token /\ Int))
