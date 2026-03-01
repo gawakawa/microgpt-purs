@@ -22,8 +22,8 @@ import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
 import Matrix (Vec(..))
 import Params (LayerWeights, StateDict(..))
-import GPT (KVCache, TokenId(..), PosId(..), softmax, gpt)
-import Tokenizer (buildVocab, tokenize)
+import GPT (KVCache, PosId(..), softmax, gpt)
+import Tokenizer (Token(..), buildVocab, tokenize)
 import Autograd (GradMap, backward, buildDag)
 import ComputationGraph (class Differentiable, ComputationGraph(..), log)
 
@@ -70,7 +70,7 @@ crossEntropyLoss logits targetIdx = negate $ log prob
   Vec probs = softmax logits
   prob = unsafePartial $ unsafeIndex probs targetIdx
 
-forward :: StateDict (ComputationGraph Number) -> Array Int -> ComputationGraph Number
+forward :: StateDict (ComputationGraph Number) -> Array Token -> ComputationGraph Number
 forward params tokens = totalLoss
   where
   sd = unwrap params
@@ -82,8 +82,8 @@ forward params tokens = totalLoss
 
   step pos (caches /\ lossAcc) (tok /\ target) = caches' /\ (lossAcc + loss)
     where
-    logits /\ caches' = gpt params sd.headDim caches (TokenId tok) (PosId pos)
-    loss = crossEntropyLoss logits target
+    logits /\ caches' = gpt params sd.headDim caches tok (PosId pos)
+    loss = crossEntropyLoss logits (unwrap target)
 
   _ /\ totalLoss = foldlWithIndex step (initialCaches /\ zero) (zipWith (/\) inputs targets)
 

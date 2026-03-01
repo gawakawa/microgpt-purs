@@ -4,7 +4,7 @@ import Prelude
 
 import Test.Unit (TestSuite, suite, test)
 import Test.Unit.Assert as Assert
-import Tokenizer (buildVocab, tokenize)
+import Tokenizer (Token(..), buildVocab, tokenize)
 
 tests :: TestSuite
 tests = do
@@ -22,14 +22,14 @@ tests = do
 
   suite "tokenize" do
     test "empty input produces single BOS" do
-      Assert.equal [ 26 ] (tokenize [])
+      Assert.equal (Token <$> [ 26 ]) (tokenize [])
     test "single character doc" do
-      Assert.equal [ 26, 0, 26 ] (tokenize [ "a" ])
+      Assert.equal (Token <$> [ 26, 0, 26 ]) (tokenize [ "a" ])
     test "single doc with multiple chars" do
-      Assert.equal [ 26, 0, 1, 26 ] (tokenize [ "ab" ])
+      Assert.equal (Token <$> [ 26, 0, 1, 26 ]) (tokenize [ "ab" ])
     test "multiple docs" do
-      Assert.equal [ 26, 0, 1, 26, 1, 2, 26 ] (tokenize [ "ab", "bc" ])
+      Assert.equal (Token <$> [ 26, 0, 1, 26, 1, 2, 26 ]) (tokenize [ "ab", "bc" ])
     test "duplicate chars are deduplicated in vocab" do
-      Assert.equal [ 26, 0, 0, 1, 26 ] (tokenize [ "aab" ])
+      Assert.equal (Token <$> [ 26, 0, 0, 1, 26 ]) (tokenize [ "aab" ])
     test "vocab is sorted alphabetically" do
-      Assert.equal [ 26, 2, 0, 26 ] (tokenize [ "ca" ])
+      Assert.equal (Token <$> [ 26, 2, 0, 26 ]) (tokenize [ "ca" ])
