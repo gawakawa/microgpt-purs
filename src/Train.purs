@@ -6,6 +6,7 @@ import Control.Comonad (extract)
 import Control.Monad.Gen.Trans (Gen, shuffle)
 import Data.Array (drop, filter, unsafeIndex, zipWith)
 import Data.Array as Array
+import Data.Bifunctor (lmap)
 import Data.List (List)
 import Data.Unfoldable (replicate)
 import Data.Foldable (class Foldable, length)
@@ -18,7 +19,7 @@ import Data.Number as N
 import Data.String (Pattern(..), null, split, trim)
 import Data.String.CodeUnits (toCharArray)
 import Data.Traversable (class Traversable, mapAccumL)
-import Data.Tuple (snd)
+import Data.Tuple (fst)
 import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
 import Matrix (Vec(..), fromFoldable)
@@ -91,20 +92,19 @@ scoreNextToken
   :: StateDict (ComputationGraph Number)
   -> Int
   -> Int
-  -> (List (KVCache (ComputationGraph Number)) /\ ComputationGraph Number)
+  -> (ComputationGraph Number /\ List (KVCache (ComputationGraph Number)))
   -> (Token /\ Token)
-  -> (List (KVCache (ComputationGraph Number)) /\ ComputationGraph Number)
-scoreNextToken params headDim pos (caches /\ lossAcc) (tok /\ target) = caches' /\ (lossAcc + loss)
-  where
-  logits /\ caches' = gpt params headDim caches tok (Pos pos)
-  loss = crossEntropyLoss logits (unwrap target)
+  -> (ComputationGraph Number /\ List (KVCache (ComputationGraph Number)))
+scoreNextToken params headDim pos (lossAcc /\ caches) (tok /\ target) =
+  lmap (\logits -> lossAcc + crossEntropyLoss logits (unwrap target))
+    $ gpt params headDim caches tok (Pos pos)
 
 -- | Forward pass: compute total cross-entropy loss over token sequence
 forward :: StateDict (ComputationGraph Number) -> Array Token -> ComputationGraph Number
-forward params tokens = snd $ foldlWithIndex (scoreNextToken params sd.headDim) initialState $ nextTokenPairs tokens
+forward params tokens = fst $ foldlWithIndex (scoreNextToken params sd.headDim) initialState $ nextTokenPairs tokens
   where
   sd = unwrap params
-  initialState = replicate (length sd.layers) mempty /\ zero
+  initialState = zero /\ replicate (length sd.layers) mempty
 
 -- | Update exponential moving averages for gradient moments
 updateMoments
