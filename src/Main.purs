@@ -4,13 +4,14 @@ import Prelude
 
 import Control.Comonad (extract)
 import Control.Monad.Gen.Trans (evalGen)
-import Data.Array (length, replicate)
+import Data.Foldable (length)
 import Effect (Effect)
 import Effect.Aff (launchAff_)
 import Effect.Class (liftEffect)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile)
 import Random.LCG (randomSeed)
+import Matrix (zeroVec)
 import Params (initParams)
 import Inference (inference)
 import Tokenizer (buildVocab)
@@ -33,8 +34,8 @@ main = launchAff_ do
         initialState =
           { params
           , dataset
-          , m: replicate numParams 0.0
-          , v: replicate numParams 0.0
+          , m: zeroVec numParams
+          , v: zeroVec numParams
           , numSteps
           , learningRate: 0.01
           , beta1: 0.85

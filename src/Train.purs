@@ -4,7 +4,7 @@ import Prelude
 
 import Control.Comonad (extract)
 import Control.Monad.Gen.Trans (Gen, shuffle)
-import Data.Array (drop, filter, fromFoldable, slice, unsafeIndex, zipWith)
+import Data.Array (drop, filter, slice, unsafeIndex, zipWith)
 import Data.Array as Array
 import Data.List (List)
 import Data.Unfoldable (replicate)
@@ -20,7 +20,7 @@ import Data.String.CodeUnits (toCharArray)
 import Data.Traversable (class Traversable, mapAccumL)
 import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
-import Matrix (Vec(..))
+import Matrix (Vec(..), fromFoldable)
 import Params (LayerWeights, StateDict(..))
 import GPT (KVCache, softmax, gpt)
 import Tokenizer (Pos(..), Token(..), tokenize)
@@ -32,11 +32,11 @@ initDataset content = shuffle docs
   where
   docs = filter (not <<< null) $ trim <$> split (Pattern "\n") content
 
-flatten :: forall t a. Foldable t => t a -> Array a
+flatten :: forall t a. Foldable t => t a -> Vec a
 flatten = fromFoldable
 
-unflatten :: forall t a b. Traversable t => t a -> Array b -> t b
-unflatten template vals = (mapAccumL step vals template).value
+unflatten :: forall t a b. Traversable t => t a -> Vec b -> t b
+unflatten template (Vec vals) = (mapAccumL step vals template).value
   where
   step arr _ = { accum: drop 1 arr, value: unsafePartial $ unsafeIndex arr 0 }
 
@@ -45,14 +45,14 @@ cycleN :: forall a. Int -> Array a -> Array a
 cycleN n arr = Array.take n $ Array.concat $ replicate ((n `div` Array.length arr) + 1) arr
 
 -- | Extract gradient values for parameters from a GradMap
-extractGrads :: forall t. Foldable t => t (ComputationGraph Number) -> GradMap -> Array Number
+extractGrads :: forall t. Foldable t => t (ComputationGraph Number) -> GradMap -> Vec Number
 extractGrads params gradMap = unsafePartial $ (\param -> fromJust $ lookup param gradMap) <$> flatten params
 
 type TrainState =
   { params :: StateDict (ComputationGraph Number)
   , dataset :: Array String
-  , m :: Array Number
-  , v :: Array Number
+  , m :: Vec Number
+  , v :: Vec Number
   , numSteps :: Int
   , learningRate :: Number
   , beta1 :: Number
@@ -94,22 +94,14 @@ forward params tokens = totalLoss
 
   _ /\ totalLoss = foldlWithIndex step (initialCaches /\ zero) (zipWith (/\) inputs targets)
 
-adamUpdate :: TrainState -> Int -> Number -> Array Number -> TrainState
+adamUpdate :: TrainState -> Int -> Number -> Vec Number -> TrainState
 adamUpdate state step lrT grads = state { params = params', m = m', v = v' }
   where
   t = toNumber (step + 1)
-
-  -- Moment updates
-  m' = zipWith (\mi gi -> state.beta1 * mi + (1.0 - state.beta1) * gi) state.m grads
-  v' = zipWith (\vi gi -> state.beta2 * vi + (1.0 - state.beta2) * gi * gi) state.v grads
-
-  -- Bias-corrected moments
+  m' = (\mi gi -> state.beta1 * mi + (1.0 - state.beta1) * gi) <$> state.m <*> grads
+  v' = (\vi gi -> state.beta2 * vi + (1.0 - state.beta2) * gi * gi) <$> state.v <*> grads
   mHat = (_ / (1.0 - N.pow state.beta1 t)) <$> m'
   vHat = (_ / (1.0 - N.pow state.beta2 t)) <$> v'
-
-  -- Parameter updates
-  updates = zipWith (\mh vh -> lrT * mh / (N.sqrt vh + state.epsAdam)) mHat vHat
-
-  flat = flatten state.params
-  flat' = zipWith (\p u -> Val $ extract p - u) flat updates
+  updates = (\mh vh -> lrT * mh / (N.sqrt vh + state.epsAdam)) <$> mHat <*> vHat
+  flat' = (\p u -> Val $ extract p - u) <$> flatten state.params <*> updates
   params' = unflatten state.params flat'
