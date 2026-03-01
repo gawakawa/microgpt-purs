@@ -8,7 +8,8 @@ import Data.String.Common (joinWith)
 import Random.LCG (mkSeed)
 import Test.Unit (TestSuite, suite, test)
 import Test.Unit.Assert as Assert
-import Train (cycleN, initDataset)
+import Data.Tuple.Nested (type (/\), (/\))
+import Train (cycleN, initDataset, nextTokenPairs)
 
 runGen :: forall a. Gen a -> a
 runGen gen = evalGen gen { newSeed: mkSeed 42, size: 0 }
@@ -60,3 +61,13 @@ tests = suite "initDataset" do
       Assert.equal [ "a", "b" ] $ cycleN 2 [ "a", "b" ]
     test "n less than array length" do
       Assert.equal [ "a" ] $ cycleN 1 [ "a", "b", "c" ]
+
+  suite "nextTokenPairs" do
+    test "creates input-target pairs" do
+      Assert.equal [ 1 /\ 2, 2 /\ 3, 3 /\ 4 ] $ nextTokenPairs [ 1, 2, 3, 4 ]
+    test "two elements" do
+      Assert.equal [ 1 /\ 2 ] $ nextTokenPairs [ 1, 2 ]
+    test "single element returns empty" do
+      Assert.equal ([] :: Array (Int /\ Int)) $ nextTokenPairs [ 1 ]
+    test "empty array returns empty" do
+      Assert.equal ([] :: Array (Int /\ Int)) $ nextTokenPairs []

@@ -4,7 +4,7 @@ import Prelude
 
 import Control.Comonad (extract)
 import Control.Monad.Gen.Trans (Gen, shuffle)
-import Data.Array (drop, filter, slice, unsafeIndex, zipWith)
+import Data.Array (drop, filter, unsafeIndex, zipWith)
 import Data.Array as Array
 import Data.List (List)
 import Data.Unfoldable (replicate)
@@ -12,12 +12,13 @@ import Data.Foldable (class Foldable, length)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Int (toNumber)
 import Data.Map (lookup)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import Data.Newtype (unwrap)
 import Data.Number as N
 import Data.String (Pattern(..), null, split, trim)
 import Data.String.CodeUnits (toCharArray)
 import Data.Traversable (class Traversable, mapAccumL)
+import Data.Tuple (snd)
 import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
 import Matrix (Vec(..), fromFoldable)
@@ -77,22 +78,33 @@ crossEntropyLoss logits targetIdx = negate $ log prob
   Vec probs = softmax logits
   prob = unsafePartial $ unsafeIndex probs targetIdx
 
+-- | Create (input, target) pairs for next-token prediction training
+-- | Returns empty array for inputs with fewer than 2 elements
+nextTokenPairs :: forall a. Array a -> Array (a /\ a)
+nextTokenPairs tokens = fromMaybe [] do
+  inputs <- Array.init tokens
+  targets <- Array.tail tokens
+  pure $ zipWith (/\) inputs targets
+
+-- | Score next-token prediction at one position: run GPT forward, compare to target
+scoreNextToken
+  :: StateDict (ComputationGraph Number)
+  -> Int
+  -> Int
+  -> (List (KVCache (ComputationGraph Number)) /\ ComputationGraph Number)
+  -> (Token /\ Token)
+  -> (List (KVCache (ComputationGraph Number)) /\ ComputationGraph Number)
+scoreNextToken params headDim pos (caches /\ lossAcc) (tok /\ target) = caches' /\ (lossAcc + loss)
+  where
+  logits /\ caches' = gpt params headDim caches tok (Pos pos)
+  loss = crossEntropyLoss logits (unwrap target)
+
+-- | Forward pass: compute total cross-entropy loss over token sequence
 forward :: StateDict (ComputationGraph Number) -> Array Token -> ComputationGraph Number
-forward params tokens = totalLoss
+forward params tokens = snd $ foldlWithIndex (scoreNextToken params sd.headDim) initialState $ nextTokenPairs tokens
   where
   sd = unwrap params
-  nLayer = length sd.layers
-  initialCaches :: List (KVCache (ComputationGraph Number))
-  initialCaches = replicate nLayer mempty
-  inputs = slice 0 (Array.length tokens - 1) tokens
-  targets = slice 1 (Array.length tokens) tokens
-
-  step pos (caches /\ lossAcc) (tok /\ target) = caches' /\ (lossAcc + loss)
-    where
-    logits /\ caches' = gpt params sd.headDim caches tok (Pos pos)
-    loss = crossEntropyLoss logits (unwrap target)
-
-  _ /\ totalLoss = foldlWithIndex step (initialCaches /\ zero) (zipWith (/\) inputs targets)
+  initialState = replicate (length sd.layers) mempty /\ zero
 
 -- | Update exponential moving averages for gradient moments
 updateMoments
