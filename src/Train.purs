@@ -94,14 +94,45 @@ forward params tokens = totalLoss
 
   _ /\ totalLoss = foldlWithIndex step (initialCaches /\ zero) (zipWith (/\) inputs targets)
 
-adamUpdate :: TrainState -> Int -> Number -> Vec Number -> TrainState
-adamUpdate state step lrT grads = state { params = params', m = m', v = v' }
+-- | Update exponential moving averages for gradient moments
+updateMoments
+  :: { beta1 :: Number, beta2 :: Number }
+  -> Vec Number
+  -> { m :: Vec Number, v :: Vec Number }
+  -> { m :: Vec Number, v :: Vec Number }
+updateMoments { beta1, beta2 } grads { m, v } =
+  { m: (\mi gi -> beta1 * mi + (1.0 - beta1) * gi) <$> m <*> grads
+  , v: (\vi gi -> beta2 * vi + (1.0 - beta2) * gi * gi) <$> v <*> grads
+  }
+
+-- | Apply bias correction to moments using (1 - beta^t) divisor
+biasCorrect
+  :: { beta1 :: Number, beta2 :: Number }
+  -> Int
+  -> { m :: Vec Number, v :: Vec Number }
+  -> { mHat :: Vec Number, vHat :: Vec Number }
+biasCorrect { beta1, beta2 } step { m, v } = { mHat, vHat }
   where
   t = toNumber (step + 1)
-  m' = (\mi gi -> state.beta1 * mi + (1.0 - state.beta1) * gi) <$> state.m <*> grads
-  v' = (\vi gi -> state.beta2 * vi + (1.0 - state.beta2) * gi * gi) <$> state.v <*> grads
-  mHat = (_ / (1.0 - N.pow state.beta1 t)) <$> m'
-  vHat = (_ / (1.0 - N.pow state.beta2 t)) <$> v'
-  updates = (\mh vh -> lrT * mh / (N.sqrt vh + state.epsAdam)) <$> mHat <*> vHat
-  flat' = (\p u -> Val $ extract p - u) <$> flatten state.params <*> updates
-  params' = unflatten state.params flat'
+  mHat = (_ / (1.0 - N.pow beta1 t)) <$> m
+  vHat = (_ / (1.0 - N.pow beta2 t)) <$> v
+
+-- | Apply Adam updates to parameters using corrected moments
+updateParams
+  :: Number
+  -> Number
+  -> { mHat :: Vec Number, vHat :: Vec Number }
+  -> StateDict (ComputationGraph Number)
+  -> StateDict (ComputationGraph Number)
+updateParams lrT eps { mHat, vHat } params = unflatten params flat'
+  where
+  updates = (\mh vh -> lrT * mh / (N.sqrt vh + eps)) <$> mHat <*> vHat
+  flat' = (\p u -> Val $ extract p - u) <$> flatten params <*> updates
+
+adamUpdate :: TrainState -> Int -> Number -> Vec Number -> TrainState
+adamUpdate state step lrT grads = state { params = params', m = moments.m, v = moments.v }
+  where
+  betas = { beta1: state.beta1, beta2: state.beta2 }
+  moments = updateMoments betas grads { m: state.m, v: state.v }
+  corrected = biasCorrect betas step moments
+  params' = updateParams lrT state.epsAdam corrected state.params
