@@ -19,7 +19,7 @@ import Data.Unfoldable (replicate)
 import GPT (KVCache, PosId(..), TokenId(..), gpt, softmax)
 import Matrix (Vec(..))
 import Params (StateDict(..))
-import Tokenizer (buildVocab, decode)
+import Tokenizer (bos, buildVocab, decode)
 
 -- | Sample a token index from probability distribution
 sample :: forall m. MonadGen m => Vec Number -> m Int
@@ -51,7 +51,6 @@ inference params dataset = fromCharArray <$> evalStateT (unfoldrM step (bos /\ 0
   where
   sd = unwrap params
   vocab = buildVocab dataset
-  bos = length vocab
   nLayer = length sd.layers
   initialCaches = replicate nLayer mempty
   temperature = 0.5

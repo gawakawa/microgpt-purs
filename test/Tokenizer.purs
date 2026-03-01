@@ -22,14 +22,14 @@ tests = do
 
   suite "tokenize" do
     test "empty input produces single BOS" do
-      Assert.equal [ 0 ] (tokenize [])
+      Assert.equal [ 26 ] (tokenize [])
     test "single character doc" do
-      Assert.equal [ 1, 0, 1 ] (tokenize [ "a" ])
+      Assert.equal [ 26, 0, 26 ] (tokenize [ "a" ])
     test "single doc with multiple chars" do
-      Assert.equal [ 2, 0, 1, 2 ] (tokenize [ "ab" ])
+      Assert.equal [ 26, 0, 1, 26 ] (tokenize [ "ab" ])
     test "multiple docs" do
-      Assert.equal [ 3, 0, 1, 3, 1, 2, 3 ] (tokenize [ "ab", "bc" ])
+      Assert.equal [ 26, 0, 1, 26, 1, 2, 26 ] (tokenize [ "ab", "bc" ])
     test "duplicate chars are deduplicated in vocab" do
-      Assert.equal [ 2, 0, 0, 1, 2 ] (tokenize [ "aab" ])
+      Assert.equal [ 26, 0, 0, 1, 26 ] (tokenize [ "aab" ])
     test "vocab is sorted alphabetically" do
-      Assert.equal [ 2, 2, 0, 2 ] (tokenize [ "ca" ])
+      Assert.equal [ 26, 2, 0, 26 ] (tokenize [ "ca" ])

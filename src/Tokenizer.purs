@@ -16,10 +16,11 @@ buildVocab = sort <<< nub <<< concatMap toCharArray
 decode :: Array Char -> Int -> Char
 decode = unsafePartial Array.unsafeIndex
 
+bos :: Int
+bos = 26
+
 encode :: Char -> Int
 encode c = on (-) toCharCode c 'a'
 
 tokenize :: Array String -> Array Int
 tokenize docs = surroundMap [ bos ] (map encode <<< toCharArray) docs
-  where
-  bos = length $ buildVocab docs
