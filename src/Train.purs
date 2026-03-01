@@ -53,12 +53,12 @@ type TrainState =
   }
 
 train :: TrainState -> TrainState
-train state = foldl step state (range 0 (state.numSteps - 1))
+train state = foldl step state $ range 0 $ state.numSteps - 1
   where
-  step s i = trainStep i s (unsafePartial $ unsafeIndex state.dataset (i `mod` Array.length state.dataset))
+  step s i = trainStep s i $ unsafePartial $ unsafeIndex state.dataset $ i `mod` Array.length state.dataset
 
-trainStep :: Int -> TrainState -> String -> TrainState
-trainStep step state doc = adamUpdate state step lrT grads
+trainStep :: TrainState -> Int -> String -> TrainState
+trainStep state step doc = adamUpdate state step lrT grads
   where
   grads = unsafePartial $ (\p -> fromJust $ lookup p gradMap) <$> flatten state.params
   gradMap = backward loss $ buildDag loss
