@@ -16,10 +16,10 @@ import Data.String.CodeUnits (fromCharArray)
 import Data.Traversable (mapAccumL)
 import Data.Tuple.Nested (type (/\), (/\))
 import Data.Unfoldable (replicate)
-import GPT (KVCache, PosId(..), gpt, softmax)
+import GPT (KVCache, gpt, softmax)
 import Matrix (Vec(..))
 import Params (StateDict(..))
-import Tokenizer (Token(..), bos, decode)
+import Tokenizer (Pos(..), Token(..), bos, decode)
 
 -- | Sample a token index from probability distribution
 sample :: forall m. MonadGen m => Vec Number -> m Int
@@ -40,7 +40,7 @@ predictNextToken
   -> StateT (List (KVCache Number)) m Token
 predictNextToken params headDim temperature tok pos = do
   caches <- get
-  let logits /\ caches' = gpt params headDim caches tok (PosId pos)
+  let logits /\ caches' = gpt params headDim caches tok (Pos pos)
   put caches'
   let probs = softmax $ (_ / temperature) <$> logits
   lift $ Token <$> sample probs

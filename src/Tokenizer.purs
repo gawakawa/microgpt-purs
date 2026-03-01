@@ -16,6 +16,10 @@ derive instance Newtype Token _
 derive instance Eq Token
 derive newtype instance Show Token
 
+newtype Pos = Pos Int
+
+derive instance Newtype Pos _
+
 -- | Build sorted unique character array from strings
 buildVocab :: Array String -> Array Char
 buildVocab = sort <<< nub <<< concatMap toCharArray

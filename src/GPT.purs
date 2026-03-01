@@ -18,11 +18,7 @@ import Data.DivisionRing (recip)
 import ComputationGraph (class Differentiable, exp, fromInt, fromNumber, relu, sqrt)
 import Matrix (Matrix, Vec(..), dot, fromFoldable, linear, slice, weightedSum)
 import Params (LayerWeights(..), StateDict(..))
-import Tokenizer (Token(..))
-
-newtype PosId = PosId Int
-
-derive instance Newtype PosId _
+import Tokenizer (Pos(..), Token(..))
 
 type Query a = Vec a
 type Key a = Vec a
@@ -54,8 +50,8 @@ embed :: forall a. Matrix a -> Int -> Vec a
 embed (Vec rows) = unsafePartial unsafeIndex rows
 
 -- | Compute combined token and position embeddings
-tokenPosEmbedding :: forall a. Differentiable a => Matrix a -> Matrix a -> Token -> PosId -> Hidden a
-tokenPosEmbedding wte wpe tok posId = embed wte (unwrap tok) + embed wpe (unwrap posId)
+tokenPosEmbedding :: forall a. Differentiable a => Matrix a -> Matrix a -> Token -> Pos -> Hidden a
+tokenPosEmbedding wte wpe tok pos = embed wte (unwrap tok) + embed wpe (unwrap pos)
 
 -- | Compute scaled dot-product attention.
 attention :: forall a. Differentiable a => Query a -> Vec (Key a) -> Vec (Value a) -> Value a
@@ -105,8 +101,8 @@ processLayers headDim layers caches input = foldl step (input /\ Nil) $ List.zip
     rmap (_ : accCaches) $ runState (transformerBlock weights headDim hidden) cache
 
 -- | Compute next-token logits with updated KV caches for autoregressive generation
-gpt :: forall a. Differentiable a => StateDict a -> Int -> List (KVCache a) -> Token -> PosId -> Vec a /\ List (KVCache a)
-gpt stateDict headDim caches tok posId =
-  lmap (linear sd.lmHead) $ processLayers headDim sd.layers caches $ tokenPosEmbedding sd.wte sd.wpe tok posId
+gpt :: forall a. Differentiable a => StateDict a -> Int -> List (KVCache a) -> Token -> Pos -> Vec a /\ List (KVCache a)
+gpt stateDict headDim caches tok pos =
+  lmap (linear sd.lmHead) $ processLayers headDim sd.layers caches $ tokenPosEmbedding sd.wte sd.wpe tok pos
   where
   sd = unwrap stateDict
