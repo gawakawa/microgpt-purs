@@ -42,7 +42,7 @@ unflatten template vals = (mapAccumL step vals template).value
 
 -- | Extract gradient values for parameters from a GradMap
 extractGrads :: forall t. Foldable t => t (ComputationGraph Number) -> GradMap -> Array Number
-extractGrads params gradMap = unsafePartial $ (fromJust $ lookup _ gradMap) <$> flatten params
+extractGrads params gradMap = unsafePartial $ (\param -> fromJust $ lookup param gradMap) <$> flatten params
 
 type TrainState =
   { params :: StateDict (ComputationGraph Number)
@@ -62,9 +62,9 @@ train state = foldl step state $ range 0 $ state.numSteps - 1
   step s i = trainStep s i $ unsafePartial $ unsafeIndex state.dataset $ i `mod` Array.length state.dataset
 
 trainStep :: TrainState -> Int -> String -> TrainState
-trainStep state step doc = adamUpdate state step lrT grads
+trainStep state step doc = adamUpdate state step lrT
+  $ extractGrads state.params $ backward $ forward state.params $ tokenize [ doc ]
   where
-  grads = extractGrads state.params $ backward $ forward state.params $ tokenize [ doc ]
   lrT = state.learningRate * (1.0 - toNumber step / toNumber state.numSteps)
 
 crossEntropyLoss :: forall a. Differentiable a => Vec a -> Int -> a
