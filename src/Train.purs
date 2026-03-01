@@ -121,10 +121,10 @@ biasCorrect { beta1, beta2 } step { m, v } = { mHat, vHat }
 updateParams
   :: Number
   -> Number
+  -> StateDict (ComputationGraph Number)
   -> { mHat :: Vec Number, vHat :: Vec Number }
   -> StateDict (ComputationGraph Number)
-  -> StateDict (ComputationGraph Number)
-updateParams lrT eps { mHat, vHat } params = unflatten params flat'
+updateParams lrT eps params { mHat, vHat } = unflatten params flat'
   where
   updates = (\mh vh -> lrT * mh / (N.sqrt vh + eps)) <$> mHat <*> vHat
   flat' = (\p u -> Val $ extract p - u) <$> flatten params <*> updates
@@ -132,7 +132,5 @@ updateParams lrT eps { mHat, vHat } params = unflatten params flat'
 adamUpdate :: TrainState -> Int -> Number -> Vec Number -> TrainState
 adamUpdate state step lrT grads = state { params = params', m = moments.m, v = moments.v }
   where
-  betas = { beta1: state.beta1, beta2: state.beta2 }
-  moments = updateMoments betas grads { m: state.m, v: state.v }
-  corrected = biasCorrect betas step moments
-  params' = updateParams lrT state.epsAdam corrected state.params
+  moments = updateMoments { beta1: state.beta1, beta2: state.beta2 } grads { m: state.m, v: state.v }
+  params' = updateParams lrT state.epsAdam state.params <<< biasCorrect { beta1: state.beta1, beta2: state.beta2 } step $ moments
