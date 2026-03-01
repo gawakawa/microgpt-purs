@@ -30,8 +30,9 @@ encode c = Token $ on (-) toCharCode c 'a'
 
 -- | Convert token back to character (Nothing for BOS)
 decode :: Token -> Maybe Char
-decode bos = Nothing
-decode (Token tok) = fromCharCode $ tok + toCharCode 'a'
+decode tok@(Token t)
+  | tok == bos = Nothing
+  | otherwise = fromCharCode $ t + toCharCode 'a'
 
 -- | Convert strings to token sequence, surrounding each with BOS
 tokenize :: Array String -> Array Token
