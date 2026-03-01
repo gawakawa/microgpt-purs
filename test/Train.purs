@@ -8,7 +8,7 @@ import Data.String.Common (joinWith)
 import Random.LCG (mkSeed)
 import Test.Unit (TestSuite, suite, test)
 import Test.Unit.Assert as Assert
-import Train (initDataset)
+import Train (cycleN, initDataset)
 
 runGen :: forall a. Gen a -> a
 runGen gen = evalGen gen { newSeed: mkSeed 42, size: 0 }
@@ -48,3 +48,15 @@ tests = suite "initDataset" do
       input = joinWith "\n" (replicate 32000 "name")
       result = runGen $ initDataset input
     Assert.equal 32000 (length result)
+
+  suite "cycleN" do
+    test "returns exactly n elements" do
+      Assert.equal 5 $ length $ cycleN 5 [ "a", "b", "c" ]
+    test "cycles through array" do
+      Assert.equal [ "a", "b", "c", "a", "b" ] $ cycleN 5 [ "a", "b", "c" ]
+    test "single element" do
+      Assert.equal [ "x", "x", "x" ] $ cycleN 3 [ "x" ]
+    test "n equals array length" do
+      Assert.equal [ "a", "b" ] $ cycleN 2 [ "a", "b" ]
+    test "n less than array length" do
+      Assert.equal [ "a" ] $ cycleN 1 [ "a", "b", "c" ]

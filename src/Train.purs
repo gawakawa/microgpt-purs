@@ -4,11 +4,11 @@ import Prelude
 
 import Control.Comonad (extract)
 import Control.Monad.Gen.Trans (Gen, shuffle)
-import Data.Array (drop, filter, fromFoldable, range, slice, unsafeIndex, zipWith)
+import Data.Array (drop, filter, fromFoldable, slice, unsafeIndex, zipWith)
 import Data.Array as Array
 import Data.List (List)
 import Data.Unfoldable (replicate)
-import Data.Foldable (class Foldable, foldl, length)
+import Data.Foldable (class Foldable, length)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Int (toNumber)
 import Data.Map (lookup)
@@ -40,6 +40,10 @@ unflatten template vals = (mapAccumL step vals template).value
   where
   step arr _ = { accum: drop 1 arr, value: unsafePartial $ unsafeIndex arr 0 }
 
+-- | Cycle an array to produce exactly n elements
+cycleN :: forall a. Int -> Array a -> Array a
+cycleN n arr = Array.take n $ Array.concat $ replicate ((n `div` Array.length arr) + 1) arr
+
 -- | Extract gradient values for parameters from a GradMap
 extractGrads :: forall t. Foldable t => t (ComputationGraph Number) -> GradMap -> Array Number
 extractGrads params gradMap = unsafePartial $ (\param -> fromJust $ lookup param gradMap) <$> flatten params
@@ -57,9 +61,9 @@ type TrainState =
   }
 
 train :: TrainState -> TrainState
-train state = foldl step state $ range 0 $ state.numSteps - 1
+train state = foldlWithIndex step state $ cycleN state.numSteps state.dataset
   where
-  step s i = trainStep s i $ unsafePartial $ unsafeIndex state.dataset $ i `mod` Array.length state.dataset
+  step i s doc = trainStep s i doc
 
 trainStep :: TrainState -> Int -> String -> TrainState
 trainStep state step doc = adamUpdate state step lrT
