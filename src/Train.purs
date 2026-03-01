@@ -24,7 +24,7 @@ import Matrix (Vec(..))
 import Params (LayerWeights, StateDict(..))
 import GPT (KVCache, softmax, gpt)
 import Tokenizer (Pos(..), Token(..), tokenize)
-import Autograd (GradMap, backward, buildDag)
+import Autograd (GradMap, backward)
 import ComputationGraph (class Differentiable, ComputationGraph(..), log)
 
 initDataset :: String -> Gen (Array String)
@@ -60,9 +60,8 @@ train state = foldl step state $ range 0 $ state.numSteps - 1
 trainStep :: TrainState -> Int -> String -> TrainState
 trainStep state step doc = adamUpdate state step lrT grads
   where
+  gradMap = backward $ forward state.params $ tokenize [ doc ]
   grads = unsafePartial $ (\p -> fromJust $ lookup p gradMap) <$> flatten state.params
-  gradMap = backward loss $ buildDag loss
-  loss = forward state.params $ tokenize [ doc ]
   lrT = state.learningRate * (1.0 - toNumber step / toNumber state.numSteps)
 
 crossEntropyLoss :: forall a. Differentiable a => Vec a -> Int -> a

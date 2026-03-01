@@ -33,8 +33,8 @@ propagate g = case _ of
 
 -- | Compute gradients for leaf nodes (Val) via backpropagation.
 -- | Returns a map from each leaf node to its gradient.
-backward :: ComputationGraph Number -> DAG (ComputationGraph Number) Unit -> GradMap
-backward root dag = Map.filterKeys isVal $ foldl step (singleton root 1.0) (topologicalSort dag)
+backward :: ComputationGraph Number -> GradMap
+backward root = Map.filterKeys isVal $ foldl step (singleton root 1.0) $ topologicalSort $ buildDag root
   where
   step :: GradMap -> ComputationGraph Number -> GradMap
   step grads expr = fromMaybe grads do
