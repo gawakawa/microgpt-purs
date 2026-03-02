@@ -4,7 +4,10 @@ import Prelude
 
 import Control.Comonad (class Comonad, class Extend, extend, extract)
 import Data.Foldable (class Foldable, foldl, foldMap, foldr)
+import Data.Hashable (hash)
 import Data.Int (toNumber)
+import Data.Int.Bits ((.^.))
+import Data.Newtype (class Newtype)
 import Data.Number as N
 
 class (Ord a, DivisionRing a, EuclideanRing a) <= Differentiable a where
@@ -25,32 +28,106 @@ instance Differentiable Number where
   fromNumber = identity
   fromInt = toNumber
 
-data ComputationGraph a
-  = Val a
-  | Add a (ComputationGraph a) (ComputationGraph a)
-  | Mul a (ComputationGraph a) (ComputationGraph a)
-  | Pow a (ComputationGraph a) Number
-  | Exp a (ComputationGraph a)
-  | Log a (ComputationGraph a)
-  | Relu a (ComputationGraph a)
+newtype Hash = Hash Int
 
-derive instance Eq a => Eq (ComputationGraph a)
-derive instance Ord a => Ord (ComputationGraph a)
+derive instance Newtype Hash _
+derive newtype instance Eq Hash
+derive newtype instance Ord Hash
+
+instance Semigroup Hash where
+  append (Hash a) (Hash b) = Hash $ (a * 16777619) .^. b
+
+data ComputationGraph a
+  = Val Hash a
+  | Add Hash a (ComputationGraph a) (ComputationGraph a)
+  | Mul Hash a (ComputationGraph a) (ComputationGraph a)
+  | Pow Hash a (ComputationGraph a) Number
+  | Exp Hash a (ComputationGraph a)
+  | Log Hash a (ComputationGraph a)
+  | Relu Hash a (ComputationGraph a)
+
+nodeHash :: forall a. ComputationGraph a -> Hash
+nodeHash (Val h _) = h
+nodeHash (Add h _ _ _) = h
+nodeHash (Mul h _ _ _) = h
+nodeHash (Pow h _ _ _) = h
+nodeHash (Exp h _ _) = h
+nodeHash (Log h _ _) = h
+nodeHash (Relu h _ _) = h
+
+mkVal :: Number -> ComputationGraph Number
+mkVal v = Val (Hash $ hash v) v
+
+mkAdd :: ComputationGraph Number -> ComputationGraph Number -> ComputationGraph Number
+mkAdd a b = Add (Hash 1 <> nodeHash a <> nodeHash b) (extract a + extract b) a b
+
+mkMul :: ComputationGraph Number -> ComputationGraph Number -> ComputationGraph Number
+mkMul a b = Mul (Hash 2 <> nodeHash a <> nodeHash b) (extract a * extract b) a b
+
+mkPow :: ComputationGraph Number -> Number -> ComputationGraph Number
+mkPow a n = Pow (Hash 3 <> nodeHash a <> Hash (hash n)) (N.pow (extract a) n) a n
+
+mkExp :: ComputationGraph Number -> ComputationGraph Number
+mkExp a = Exp (Hash 4 <> nodeHash a) (N.exp $ extract a) a
+
+mkLog :: ComputationGraph Number -> ComputationGraph Number
+mkLog a = Log (Hash 5 <> nodeHash a) (N.log $ extract a) a
+
+mkRelu :: ComputationGraph Number -> ComputationGraph Number
+mkRelu a = Relu (Hash 6 <> nodeHash a) (max 0.0 $ extract a) a
+
+structuralEq :: forall a. Eq a => ComputationGraph a -> ComputationGraph a -> Boolean
+structuralEq (Val _ v1) (Val _ v2) = v1 == v2
+structuralEq (Add _ v1 a1 b1) (Add _ v2 a2 b2) = v1 == v2 && structuralEq a1 a2 && structuralEq b1 b2
+structuralEq (Mul _ v1 a1 b1) (Mul _ v2 a2 b2) = v1 == v2 && structuralEq a1 a2 && structuralEq b1 b2
+structuralEq (Pow _ v1 a1 n1) (Pow _ v2 a2 n2) = v1 == v2 && n1 == n2 && structuralEq a1 a2
+structuralEq (Exp _ v1 a1) (Exp _ v2 a2) = v1 == v2 && structuralEq a1 a2
+structuralEq (Log _ v1 a1) (Log _ v2 a2) = v1 == v2 && structuralEq a1 a2
+structuralEq (Relu _ v1 a1) (Relu _ v2 a2) = v1 == v2 && structuralEq a1 a2
+structuralEq _ _ = false
+
+structuralCompare :: forall a. Ord a => ComputationGraph a -> ComputationGraph a -> Ordering
+structuralCompare (Val _ v1) (Val _ v2) = compare v1 v2
+structuralCompare (Val _ _) _ = LT
+structuralCompare _ (Val _ _) = GT
+structuralCompare (Add _ v1 a1 b1) (Add _ v2 a2 b2) = compare v1 v2 <> structuralCompare a1 a2 <> structuralCompare b1 b2
+structuralCompare (Add _ _ _ _) _ = LT
+structuralCompare _ (Add _ _ _ _) = GT
+structuralCompare (Mul _ v1 a1 b1) (Mul _ v2 a2 b2) = compare v1 v2 <> structuralCompare a1 a2 <> structuralCompare b1 b2
+structuralCompare (Mul _ _ _ _) _ = LT
+structuralCompare _ (Mul _ _ _ _) = GT
+structuralCompare (Pow _ v1 a1 n1) (Pow _ v2 a2 n2) = compare v1 v2 <> compare n1 n2 <> structuralCompare a1 a2
+structuralCompare (Pow _ _ _ _) _ = LT
+structuralCompare _ (Pow _ _ _ _) = GT
+structuralCompare (Exp _ v1 a1) (Exp _ v2 a2) = compare v1 v2 <> structuralCompare a1 a2
+structuralCompare (Exp _ _ _) _ = LT
+structuralCompare _ (Exp _ _ _) = GT
+structuralCompare (Log _ v1 a1) (Log _ v2 a2) = compare v1 v2 <> structuralCompare a1 a2
+structuralCompare (Log _ _ _) _ = LT
+structuralCompare _ (Log _ _ _) = GT
+structuralCompare (Relu _ v1 a1) (Relu _ v2 a2) = compare v1 v2 <> structuralCompare a1 a2
+
+instance Eq a => Eq (ComputationGraph a) where
+  eq a b = nodeHash a == nodeHash b && structuralEq a b
+
+instance Ord a => Ord (ComputationGraph a) where
+  compare a b = compare (nodeHash a) (nodeHash b) <> structuralCompare a b
+
 derive instance Functor ComputationGraph
 
 instance Semiring (ComputationGraph Number) where
-  zero = Val 0.0
-  one = Val 1.0
-  add a b = Add (extract a + extract b) a b
-  mul a b = Mul (extract a * extract b) a b
+  zero = mkVal 0.0
+  one = mkVal 1.0
+  add = mkAdd
+  mul = mkMul
 
 instance Ring (ComputationGraph Number) where
-  sub a b = add a (mul (Val (-1.0)) b)
+  sub a b = add a (mul (mkVal (-1.0)) b)
 
 instance CommutativeRing (ComputationGraph Number)
 
 instance DivisionRing (ComputationGraph Number) where
-  recip a = Pow (1.0 / extract a) a (-1.0)
+  recip a = mkPow a (-1.0)
 
 instance EuclideanRing (ComputationGraph Number) where
   degree _ = 1
@@ -58,53 +135,53 @@ instance EuclideanRing (ComputationGraph Number) where
   mod _ _ = zero
 
 instance Differentiable (ComputationGraph Number) where
-  exp a = Exp (N.exp $ extract a) a
-  log a = Log (N.log $ extract a) a
-  pow a n = Pow (N.pow (extract a) n) a n
+  exp = mkExp
+  log = mkLog
+  pow = mkPow
   sqrt a = pow a 0.5
-  relu a = Relu (max 0.0 $ extract a) a
-  fromNumber = Val
-  fromInt = Val <<< toNumber
+  relu = mkRelu
+  fromNumber = mkVal
+  fromInt = mkVal <<< toNumber
 
 instance Show a => Show (ComputationGraph a) where
-  show (Val v) = "(Val " <> show v <> ")"
-  show (Add v a b) = "(Add " <> show v <> " " <> show a <> " " <> show b <> ")"
-  show (Mul v a b) = "(Mul " <> show v <> " " <> show a <> " " <> show b <> ")"
-  show (Pow v a n) = "(Pow " <> show v <> " " <> show a <> " " <> show n <> ")"
-  show (Exp v a) = "(Exp " <> show v <> " " <> show a <> ")"
-  show (Log v a) = "(Log " <> show v <> " " <> show a <> ")"
-  show (Relu v a) = "(Relu " <> show v <> " " <> show a <> ")"
+  show (Val _ v) = "(Val " <> show v <> ")"
+  show (Add _ v a b) = "(Add " <> show v <> " " <> show a <> " " <> show b <> ")"
+  show (Mul _ v a b) = "(Mul " <> show v <> " " <> show a <> " " <> show b <> ")"
+  show (Pow _ v a n) = "(Pow " <> show v <> " " <> show a <> " " <> show n <> ")"
+  show (Exp _ v a) = "(Exp " <> show v <> " " <> show a <> ")"
+  show (Log _ v a) = "(Log " <> show v <> " " <> show a <> ")"
+  show (Relu _ v a) = "(Relu " <> show v <> " " <> show a <> ")"
 
 instance Extend ComputationGraph where
-  extend f expr@(Val _) = Val (f expr)
-  extend f expr@(Add _ a b) = Add (f expr) (extend f a) (extend f b)
-  extend f expr@(Mul _ a b) = Mul (f expr) (extend f a) (extend f b)
-  extend f expr@(Pow _ a n) = Pow (f expr) (extend f a) n
-  extend f expr@(Exp _ a) = Exp (f expr) (extend f a)
-  extend f expr@(Log _ a) = Log (f expr) (extend f a)
-  extend f expr@(Relu _ a) = Relu (f expr) (extend f a)
+  extend f expr@(Val h _) = Val h (f expr)
+  extend f expr@(Add h _ a b) = Add h (f expr) (extend f a) (extend f b)
+  extend f expr@(Mul h _ a b) = Mul h (f expr) (extend f a) (extend f b)
+  extend f expr@(Pow h _ a n) = Pow h (f expr) (extend f a) n
+  extend f expr@(Exp h _ a) = Exp h (f expr) (extend f a)
+  extend f expr@(Log h _ a) = Log h (f expr) (extend f a)
+  extend f expr@(Relu h _ a) = Relu h (f expr) (extend f a)
 
 instance Comonad ComputationGraph where
-  extract (Val v) = v
-  extract (Add v _ _) = v
-  extract (Mul v _ _) = v
-  extract (Pow v _ _) = v
-  extract (Exp v _) = v
-  extract (Log v _) = v
-  extract (Relu v _) = v
+  extract (Val _ v) = v
+  extract (Add _ v _ _) = v
+  extract (Mul _ v _ _) = v
+  extract (Pow _ v _ _) = v
+  extract (Exp _ v _) = v
+  extract (Log _ v _) = v
+  extract (Relu _ v _) = v
 
 instance Foldable ComputationGraph where
-  foldMap f (Val v) = f v
-  foldMap f (Add v a b) = f v <> foldMap f a <> foldMap f b
-  foldMap f (Mul v a b) = f v <> foldMap f a <> foldMap f b
-  foldMap f (Pow v a _) = f v <> foldMap f a
-  foldMap f (Exp v a) = f v <> foldMap f a
-  foldMap f (Log v a) = f v <> foldMap f a
-  foldMap f (Relu v a) = f v <> foldMap f a
+  foldMap f (Val _ v) = f v
+  foldMap f (Add _ v a b) = f v <> foldMap f a <> foldMap f b
+  foldMap f (Mul _ v a b) = f v <> foldMap f a <> foldMap f b
+  foldMap f (Pow _ v a _) = f v <> foldMap f a
+  foldMap f (Exp _ v a) = f v <> foldMap f a
+  foldMap f (Log _ v a) = f v <> foldMap f a
+  foldMap f (Relu _ v a) = f v <> foldMap f a
   foldl fn z cg = foldl fn z (foldMap pure cg :: Array _)
   foldr fn z cg = foldr fn z (foldMap pure cg :: Array _)
 
 -- | Check if the node is a leaf (Val).
 isVal :: forall a. ComputationGraph a -> Boolean
-isVal (Val _) = true
+isVal (Val _ _) = true
 isVal _ = false

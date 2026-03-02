@@ -17,19 +17,19 @@ type GradMap = Map (ComputationGraph Number) Number
 
 propagate :: Number -> ComputationGraph Number -> Array (ComputationGraph Number /\ Number)
 propagate g = case _ of
-  Val _ -> []
+  Val _ _ -> []
   -- ∂(a+b)/∂a = 1, ∂(a+b)/∂b = 1
-  Add _ a b -> [ a /\ g, b /\ g ]
+  Add _ _ a b -> [ a /\ g, b /\ g ]
   -- ∂(a·b)/∂a = b, ∂(a·b)/∂b = a
-  Mul _ a b -> [ a /\ (g * extract b), b /\ (g * extract a) ]
+  Mul _ _ a b -> [ a /\ (g * extract b), b /\ (g * extract a) ]
   -- ∂aⁿ/∂a = n·aⁿ⁻¹
-  Pow _ a n -> [ a /\ (g * n * N.pow (extract a) (n - 1.0)) ]
+  Pow _ _ a n -> [ a /\ (g * n * N.pow (extract a) (n - 1.0)) ]
   -- ∂eᵃ/∂a = eᵃ
-  Exp v a -> [ a /\ (g * v) ]
+  Exp _ v a -> [ a /\ (g * v) ]
   -- ∂(ln a)/∂a = 1/a
-  Log _ a -> [ a /\ (g / extract a) ]
+  Log _ _ a -> [ a /\ (g / extract a) ]
   -- ∂max(0,a)/∂a = 1 if a>0, else 0
-  Relu _ a -> [ a /\ (g * if extract a > 0.0 then 1.0 else 0.0) ]
+  Relu _ _ a -> [ a /\ (g * if extract a > 0.0 then 1.0 else 0.0) ]
 
 -- | Compute gradients for leaf nodes (Val) via backpropagation.
 -- | Returns a map from each leaf node to its gradient.
@@ -46,24 +46,24 @@ buildDag root = unsafeFromWeightedDigraph $ fromEdges (collectEdges root)
   where
   collectEdges :: ComputationGraph Number -> Array { source :: ComputationGraph Number, target :: ComputationGraph Number, weight :: Unit }
   collectEdges expr = case expr of
-    Val _ -> []
-    Add _ a b ->
+    Val _ _ -> []
+    Add _ _ a b ->
       [ { source: expr, target: a, weight: unit }
       , { source: expr, target: b, weight: unit }
       ] <> collectEdges a <> collectEdges b
-    Mul _ a b ->
+    Mul _ _ a b ->
       [ { source: expr, target: a, weight: unit }
       , { source: expr, target: b, weight: unit }
       ] <> collectEdges a <> collectEdges b
-    Pow _ a _ ->
+    Pow _ _ a _ ->
       [ { source: expr, target: a, weight: unit }
       ] <> collectEdges a
-    Exp _ a ->
+    Exp _ _ a ->
       [ { source: expr, target: a, weight: unit }
       ] <> collectEdges a
-    Log _ a ->
+    Log _ _ a ->
       [ { source: expr, target: a, weight: unit }
       ] <> collectEdges a
-    Relu _ a ->
+    Relu _ _ a ->
       [ { source: expr, target: a, weight: unit }
       ] <> collectEdges a

@@ -42,6 +42,7 @@
           "node-fs"
           "prelude"
           "strings"
+          "unordered-collections"
           "ursi.debug"
         ];
 

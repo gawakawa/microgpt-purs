@@ -27,7 +27,7 @@ import Params (LayerWeights, StateDict(..))
 import GPT (KVCache, softmax, gpt)
 import Tokenizer (Pos(..), Token(..), tokenize)
 import Autograd (GradMap, backward)
-import ComputationGraph (class Differentiable, ComputationGraph(..), log)
+import ComputationGraph (class Differentiable, ComputationGraph, log, mkVal)
 
 initDataset :: String -> Gen (Array String)
 initDataset content = shuffle docs
@@ -139,7 +139,7 @@ updateParams
 updateParams lrT eps params { mHat, vHat } = unflatten params flat'
   where
   updates = (\mh vh -> lrT * mh / (N.sqrt vh + eps)) <$> mHat <*> vHat
-  flat' = (\p u -> Val $ extract p - u) <$> flatten params <*> updates
+  flat' = (\p u -> mkVal $ extract p - u) <$> flatten params <*> updates
 
 adamUpdate :: TrainState -> Int -> Number -> Vec Number -> TrainState
 adamUpdate state step lrT grads = state { params = params', m = moments.m, v = moments.v }
