@@ -96,35 +96,39 @@ structuralCompare :: forall a. Ord a => ComputationGraph a -> ComputationGraph a
 structuralCompare (Val _ v1) (Val _ v2) = compare v1 v2
 structuralCompare (Val _ _) _ = LT
 structuralCompare _ (Val _ _) = GT
-structuralCompare (Add _ v1 a1 b1) (Add _ v2 a2 b2) = cmp3 v1 v2 a1 a2 b1 b2
-structuralCompare (Add _ _ _ _) _ = LT
-structuralCompare _ (Add _ _ _ _) = GT
-structuralCompare (Mul _ v1 a1 b1) (Mul _ v2 a2 b2) = cmp3 v1 v2 a1 a2 b1 b2
-structuralCompare (Mul _ _ _ _) _ = LT
-structuralCompare _ (Mul _ _ _ _) = GT
-structuralCompare (Pow _ v1 a1 n1) (Pow _ v2 a2 n2) = cmp2 v1 v2 a1 a2 # \r -> case r of
-  EQ -> compare n1 n2
-  _ -> r
-structuralCompare (Pow _ _ _ _) _ = LT
-structuralCompare _ (Pow _ _ _ _) = GT
-structuralCompare (Exp _ v1 a1) (Exp _ v2 a2) = cmp2 v1 v2 a1 a2
-structuralCompare (Exp _ _ _) _ = LT
-structuralCompare _ (Exp _ _ _) = GT
-structuralCompare (Log _ v1 a1) (Log _ v2 a2) = cmp2 v1 v2 a1 a2
-structuralCompare (Log _ _ _) _ = LT
-structuralCompare _ (Log _ _ _) = GT
-structuralCompare (Relu _ v1 a1) (Relu _ v2 a2) = cmp2 v1 v2 a1 a2
-
-cmp2 :: forall a. Ord a => a -> a -> ComputationGraph a -> ComputationGraph a -> Ordering
-cmp2 v1 v2 a1 a2 = case compare v1 v2 of
-  EQ -> structuralCompare a1 a2
-  r -> r
-
-cmp3 :: forall a. Ord a => a -> a -> ComputationGraph a -> ComputationGraph a -> ComputationGraph a -> ComputationGraph a -> Ordering
-cmp3 v1 v2 a1 a2 b1 b2 = case compare v1 v2 of
+structuralCompare (Add _ v1 a1 b1) (Add _ v2 a2 b2) = case compare v1 v2 of
   EQ -> case structuralCompare a1 a2 of
     EQ -> structuralCompare b1 b2
     r -> r
+  r -> r
+structuralCompare (Add _ _ _ _) _ = LT
+structuralCompare _ (Add _ _ _ _) = GT
+structuralCompare (Mul _ v1 a1 b1) (Mul _ v2 a2 b2) = case compare v1 v2 of
+  EQ -> case structuralCompare a1 a2 of
+    EQ -> structuralCompare b1 b2
+    r -> r
+  r -> r
+structuralCompare (Mul _ _ _ _) _ = LT
+structuralCompare _ (Mul _ _ _ _) = GT
+structuralCompare (Pow _ v1 a1 n1) (Pow _ v2 a2 n2) = case compare v1 v2 of
+  EQ -> case structuralCompare a1 a2 of
+    EQ -> compare n1 n2
+    r -> r
+  r -> r
+structuralCompare (Pow _ _ _ _) _ = LT
+structuralCompare _ (Pow _ _ _ _) = GT
+structuralCompare (Exp _ v1 a1) (Exp _ v2 a2) = case compare v1 v2 of
+  EQ -> structuralCompare a1 a2
+  r -> r
+structuralCompare (Exp _ _ _) _ = LT
+structuralCompare _ (Exp _ _ _) = GT
+structuralCompare (Log _ v1 a1) (Log _ v2 a2) = case compare v1 v2 of
+  EQ -> structuralCompare a1 a2
+  r -> r
+structuralCompare (Log _ _ _) _ = LT
+structuralCompare _ (Log _ _ _) = GT
+structuralCompare (Relu _ v1 a1) (Relu _ v2 a2) = case compare v1 v2 of
+  EQ -> structuralCompare a1 a2
   r -> r
 
 instance Eq a => Eq (ComputationGraph a) where
