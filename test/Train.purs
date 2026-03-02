@@ -9,7 +9,11 @@ import Random.LCG (mkSeed)
 import Test.Unit (TestSuite, suite, test)
 import Test.Unit.Assert as Assert
 import Data.Tuple.Nested (type (/\), (/\))
-import Train (cycleN, initDataset, nextTokenPairs)
+import Control.Comonad (extract)
+import Data.Number as N
+import ComputationGraph (mkVal)
+import Matrix (fromFoldable)
+import Train (crossEntropyLoss, cycleN, initDataset, nextTokenPairs)
 
 runGen :: forall a. Gen a -> a
 runGen gen = evalGen gen { newSeed: mkSeed 42, size: 0 }
@@ -71,3 +75,11 @@ tests = suite "initDataset" do
       Assert.equal ([] :: Array (Int /\ Int)) $ nextTokenPairs [ 1 ]
     test "empty array returns empty" do
       Assert.equal ([] :: Array (Int /\ Int)) $ nextTokenPairs []
+
+  suite "crossEntropyLoss" do
+    test "produces finite loss with extreme logits" do
+      -- logits = [1000, 0, 0] -> exp(-1000) underflows to 0
+      -- naive implementation: log(0) = -Infinity -> negate = +Infinity (not finite)
+      let logits = fromFoldable [ mkVal 1000.0, mkVal 0.0, mkVal 0.0 ]
+      let loss = crossEntropyLoss logits 1
+      Assert.assert "loss should be finite" $ N.isFinite $ extract loss

@@ -9,7 +9,7 @@ import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.List (List)
 import Data.Unfoldable (replicate)
-import Data.Foldable (class Foldable, length)
+import Data.Foldable (class Foldable, foldl, length, sum)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Int (toNumber)
 import Data.Map (lookup)
@@ -24,10 +24,10 @@ import Data.Tuple.Nested (type (/\), (/\))
 import Partial.Unsafe (unsafePartial)
 import Matrix (Vec(..), fromFoldable)
 import Params (LayerWeights, StateDict(..))
-import GPT (KVCache, softmax, gpt)
+import GPT (KVCache, gpt)
 import Tokenizer (Pos(..), Token(..), tokenize)
 import Autograd (GradMap, backward)
-import ComputationGraph (class Differentiable, ComputationGraph, log, mkVal)
+import ComputationGraph (class Differentiable, ComputationGraph, exp, fromNumber, log, mkVal)
 
 initDataset :: String -> Gen (Array String)
 initDataset content = shuffle docs
@@ -77,10 +77,10 @@ trainStep step state doc = adamUpdate state step lrT grads
   lrT = state.learningRate * (1.0 - toNumber step / toNumber state.numSteps)
 
 crossEntropyLoss :: forall a. Differentiable a => Vec a -> Int -> a
-crossEntropyLoss logits targetIdx = negate $ log prob
+crossEntropyLoss (Vec logits) targetIdx = negate $ logit - maxVal - log (sum $ exp <<< (_ - maxVal) <$> logits)
   where
-  Vec probs = softmax logits
-  prob = unsafePartial $ unsafeIndex probs targetIdx
+  maxVal = foldl max (fromNumber (-N.infinity)) logits
+  logit = unsafePartial $ unsafeIndex logits targetIdx
 
 -- | Create (input, target) pairs for next-token prediction training
 -- | Returns empty array for inputs with fewer than 2 elements
