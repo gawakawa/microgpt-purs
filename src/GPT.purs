@@ -29,10 +29,11 @@ type KVCache a = List { key :: Key a, value :: Value a }
 
 -- | Compute softmax with numerical stability (subtract max before exp)
 softmax :: forall a. Differentiable a => Vec a -> Vec a
-softmax logits = (_ / sum exps) <$> exps
+softmax logits = (_ / sumExps) <$> exps
   where
   maxVal = foldl max (fromNumber (-N.infinity)) logits
   exps = (exp <<< (_ - maxVal)) <$> logits
+  sumExps = sum exps
 
 -- | Apply RMS normalization (root mean square layer norm without centering)
 rmsnorm :: forall a. Differentiable a => Vec a -> Vec a

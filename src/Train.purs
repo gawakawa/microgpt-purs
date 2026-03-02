@@ -68,9 +68,12 @@ train state = foldlWithIndex trainStep state $ cycleN state.numSteps state.datas
 
 -- | Execute one training step: forward pass, backward pass, and Adam update
 trainStep :: Int -> TrainState -> String -> TrainState
-trainStep step state doc = adamUpdate state step lrT
-  $ extractGrads state.params $ backward $ forward state.params $ tokenize [ doc ]
+trainStep step state doc = adamUpdate state step lrT grads
   where
+  tokens = tokenize [ doc ]
+  loss = forward state.params tokens
+  gradMap = backward loss
+  grads = extractGrads state.params gradMap
   lrT = state.learningRate * (1.0 - toNumber step / toNumber state.numSteps)
 
 crossEntropyLoss :: forall a. Differentiable a => Vec a -> Int -> a
