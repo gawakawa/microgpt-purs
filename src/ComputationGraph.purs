@@ -3,11 +3,17 @@ module ComputationGraph where
 import Prelude
 
 import Control.Comonad (class Comonad, class Extend, extend, extract)
+import Control.Monad.State (State, evalState, get, modify_)
 import Data.Foldable (class Foldable, foldl, foldMap, foldr)
-import Data.Hashable (hash)
+import Data.Graph.Weighted (fromEdges)
+import Data.Graph.Weighted.DAG (DAG, unsafeFromWeightedDigraph)
+import Data.Hashable (class Hashable, hash)
+import Data.HashMap (HashMap)
+import Data.HashMap as HashMap
 import Data.Int (toNumber)
 import Data.Int.Bits ((.^.))
-import Data.Newtype (class Newtype)
+import Data.Maybe (Maybe(..))
+import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
 
 class (Ord a, DivisionRing a, EuclideanRing a) <= Differentiable a where
@@ -113,6 +119,9 @@ instance Eq a => Eq (ComputationGraph a) where
 instance Ord a => Ord (ComputationGraph a) where
   compare a b = compare (nodeHash a) (nodeHash b) <> structuralCompare a b
 
+instance Eq a => Hashable (ComputationGraph a) where
+  hash = unwrap <<< nodeHash
+
 derive instance Functor ComputationGraph
 
 instance Semiring (ComputationGraph Number) where
@@ -185,3 +194,44 @@ instance Foldable ComputationGraph where
 isVal :: forall a. ComputationGraph a -> Boolean
 isVal (Val _ _) = true
 isVal _ = false
+
+type Edge = { source :: ComputationGraph Number, target :: ComputationGraph Number, weight :: Unit }
+type Cache = HashMap (ComputationGraph Number) (Array Edge)
+
+buildDag :: ComputationGraph Number -> DAG (ComputationGraph Number) Unit
+buildDag root = unsafeFromWeightedDigraph $ fromEdges $ evalState (collectEdges root) HashMap.empty
+
+collectEdges :: ComputationGraph Number -> State Cache (Array Edge)
+collectEdges expr = do
+  cache <- get
+  case HashMap.lookup expr cache of
+    Just edges -> pure edges
+    Nothing -> do
+      edges <- case expr of
+        Val _ _ -> pure []
+        Add _ _ a b -> do
+          ea <- collectEdges a
+          eb <- collectEdges b
+          pure $ [ { source: expr, target: a, weight: unit }
+                 , { source: expr, target: b, weight: unit }
+                 ] <> ea <> eb
+        Mul _ _ a b -> do
+          ea <- collectEdges a
+          eb <- collectEdges b
+          pure $ [ { source: expr, target: a, weight: unit }
+                 , { source: expr, target: b, weight: unit }
+                 ] <> ea <> eb
+        Pow _ _ a _ -> do
+          ea <- collectEdges a
+          pure $ [ { source: expr, target: a, weight: unit } ] <> ea
+        Exp _ _ a -> do
+          ea <- collectEdges a
+          pure $ [ { source: expr, target: a, weight: unit } ] <> ea
+        Log _ _ a -> do
+          ea <- collectEdges a
+          pure $ [ { source: expr, target: a, weight: unit } ] <> ea
+        Relu _ _ a -> do
+          ea <- collectEdges a
+          pure $ [ { source: expr, target: a, weight: unit } ] <> ea
+      modify_ $ HashMap.insert expr edges
+      pure edges
