@@ -3,21 +3,20 @@ module Train where
 import Prelude
 
 import Control.Comonad (extract)
-import Control.Monad.Gen.Trans (Gen, shuffle)
 import Data.Array (drop, filter, unsafeIndex, zipWith)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.List (List)
 import Data.Unfoldable (replicate)
 import Data.Foldable (class Foldable, foldl, length, sum)
-import Data.FoldableWithIndex (foldlWithIndex)
+import Data.FoldableWithIndex (foldWithIndexM, foldlWithIndex)
 import Data.Int (toNumber)
 import Data.Map (lookup)
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Newtype (unwrap)
 import Data.Number as N
-import Data.String (Pattern(..), null, split, trim)
-import Data.String.CodeUnits (toCharArray)
+import Data.Number.Format (fixed, toStringWith)
+import Data.String (null)
 import Data.Traversable (class Traversable, mapAccumL)
 import Data.Tuple (fst)
 import Data.Tuple.Nested (type (/\), (/\))
@@ -29,10 +28,14 @@ import Tokenizer (Pos(..), Token(..), tokenize)
 import Autograd (GradMap, backward)
 import ComputationGraph (class Differentiable, ComputationGraph, exp, fromNumber, log, mkVal)
 
-initDataset :: String -> Gen (Array String)
-initDataset content = shuffle docs
+type Logger m = String -> m Unit
+
+initDataset :: forall m. Monad m => Logger m -> Array String -> m (Array String)
+initDataset logger docs = do
+  logger $ "num docs: " <> show (Array.length filteredDocs)
+  pure filteredDocs
   where
-  docs = filter (not <<< null) $ trim <$> split (Pattern "\n") content
+  filteredDocs = filter (not <<< null) docs
 
 flatten :: forall t a. Foldable t => t a -> Vec a
 flatten = fromFoldable
@@ -63,12 +66,14 @@ type TrainState =
   }
 
 -- | Run training loop for numSteps iterations, cycling through the dataset
-train :: TrainState -> TrainState
-train state = foldlWithIndex trainStep state $ cycleN state.numSteps state.dataset
+train :: forall m. Monad m => Logger m -> TrainState -> m TrainState
+train logger state = foldWithIndexM (trainStep logger) state $ cycleN state.numSteps state.dataset
 
 -- | Execute one training step: forward pass, backward pass, and Adam update
-trainStep :: Int -> TrainState -> String -> TrainState
-trainStep step state doc = adamUpdate state step lrT grads
+trainStep :: forall m. Monad m => Logger m -> Int -> TrainState -> String -> m TrainState
+trainStep logger step state doc = do
+  logger $ "step " <> show (step + 1) <> " / " <> show state.numSteps <> " | loss " <> toStringWith (fixed 3) (extract loss)
+  pure $ adamUpdate state step lrT grads
   where
   tokens = tokenize [ doc ]
   loss = forward state.params tokens

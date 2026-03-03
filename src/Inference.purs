@@ -20,6 +20,7 @@ import GPT (KVCache, gpt, softmax)
 import Matrix (Vec(..))
 import Params (StateDict(..))
 import Tokenizer (Pos(..), Token(..), bos, decode)
+import Train (Logger)
 
 -- | Sample a token index from probability distribution
 sample :: forall m. MonadGen m => Vec Number -> m Int
@@ -46,8 +47,12 @@ predictNextToken params headDim temperature tok pos = do
   lift $ Token <$> sample probs
 
 -- | Generate text that resembles the given dataset using trained weights
-inference :: forall m. MonadGen m => StateDict Number -> Array String -> m String
-inference params dataset = fromCharArray <$> evalStateT (unfoldrM step (bos /\ 0)) (replicate (length sd.layers) mempty)
+inference :: forall m. MonadGen m => Logger m -> StateDict Number -> Array String -> m String
+inference logger params _dataset = do
+  logger "--- inference ---"
+  result <- fromCharArray <$> evalStateT (unfoldrM step (bos /\ 0)) (replicate (length sd.layers) mempty)
+  logger $ "sample: " <> result
+  pure result
   where
   sd = unwrap params
   temperature = 0.5

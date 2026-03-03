@@ -3,7 +3,6 @@ module Params where
 import Prelude
 
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
-import Control.Monad.Gen.Trans (Gen)
 import Data.Foldable (class Foldable, foldMap, foldl, foldr)
 import Data.List (List)
 import Data.Newtype (class Newtype)
@@ -98,7 +97,7 @@ sampleGauss std = do
   let z = N.sqrt (-2.0 * N.log u1) * N.cos (2.0 * N.pi * u2)
   pure $ z * std
 
-matrix :: Int -> Int -> Gen (Matrix (ComputationGraph Number))
+matrix :: forall m. MonadGen m => Int -> Int -> m (Matrix (ComputationGraph Number))
 matrix nout nin = Vec <$> replicateA nout do
   Vec <$> replicateA nin do
     g <- sampleGauss std
@@ -106,7 +105,7 @@ matrix nout nin = Vec <$> replicateA nout do
   where
   std = 0.08
 
-initParams :: Int -> Int -> Int -> Int -> Int -> Gen (StateDict (ComputationGraph Number))
+initParams :: forall m. MonadGen m => Int -> Int -> Int -> Int -> Int -> m (StateDict (ComputationGraph Number))
 initParams nEmbd nHead nLayer blockSize vocabSize = do
   wte <- matrix vocabSize nEmbd
   wpe <- matrix blockSize nEmbd
