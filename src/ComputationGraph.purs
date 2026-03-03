@@ -93,8 +93,10 @@ structuralEq (Log _ v1 a1) (Log _ v2 a2) = v1 == v2 && structuralEq a1 a2
 structuralEq (Relu _ v1 a1) (Relu _ v2 a2) = v1 == v2 && structuralEq a1 a2
 structuralEq _ _ = false
 
+-- NOTE: Temporarily using hash-only comparison to test structuralEq bottleneck hypothesis.
+-- This risks treating hash-colliding nodes as equal, but is acceptable for testing.
 instance Eq a => Eq (ComputationGraph a) where
-  eq a b = nodeHash a == nodeHash b && structuralEq a b
+  eq a b = nodeHash a == nodeHash b
 
 -- | NOTE: This Ord instance compares by extracted value (forward pass result),
 -- | NOT by structure. This violates the Ord/Eq consistency law (a == b ⟺ compare a b == EQ)
