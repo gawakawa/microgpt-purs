@@ -38,3 +38,5 @@ paths:
     where
     -- complex where clause...
   ```
+
+- Avoid `#` and `<#>` — use `$` and `<$>` instead
