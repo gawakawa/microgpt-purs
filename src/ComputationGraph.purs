@@ -14,7 +14,6 @@ import Data.HashMap (HashMap)
 import Data.HashMap as HashMap
 import Data.Int (toNumber)
 import Data.Int.Bits ((.^.))
-import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
 
@@ -94,52 +93,16 @@ structuralEq (Log _ v1 a1) (Log _ v2 a2) = v1 == v2 && structuralEq a1 a2
 structuralEq (Relu _ v1 a1) (Relu _ v2 a2) = v1 == v2 && structuralEq a1 a2
 structuralEq _ _ = false
 
-structuralCompare :: forall a. Ord a => ComputationGraph a -> ComputationGraph a -> Ordering
-structuralCompare (Val _ v1) (Val _ v2) = compare v1 v2
-structuralCompare (Val _ _) _ = LT
-structuralCompare _ (Val _ _) = GT
-structuralCompare (Add _ v1 a1 b1) (Add _ v2 a2 b2) = case compare v1 v2 of
-  EQ -> case structuralCompare a1 a2 of
-    EQ -> structuralCompare b1 b2
-    r -> r
-  r -> r
-structuralCompare (Add _ _ _ _) _ = LT
-structuralCompare _ (Add _ _ _ _) = GT
-structuralCompare (Mul _ v1 a1 b1) (Mul _ v2 a2 b2) = case compare v1 v2 of
-  EQ -> case structuralCompare a1 a2 of
-    EQ -> structuralCompare b1 b2
-    r -> r
-  r -> r
-structuralCompare (Mul _ _ _ _) _ = LT
-structuralCompare _ (Mul _ _ _ _) = GT
-structuralCompare (Pow _ v1 a1 n1) (Pow _ v2 a2 n2) = case compare v1 v2 of
-  EQ -> case structuralCompare a1 a2 of
-    EQ -> compare n1 n2
-    r -> r
-  r -> r
-structuralCompare (Pow _ _ _ _) _ = LT
-structuralCompare _ (Pow _ _ _ _) = GT
-structuralCompare (Exp _ v1 a1) (Exp _ v2 a2) = case compare v1 v2 of
-  EQ -> structuralCompare a1 a2
-  r -> r
-structuralCompare (Exp _ _ _) _ = LT
-structuralCompare _ (Exp _ _ _) = GT
-structuralCompare (Log _ v1 a1) (Log _ v2 a2) = case compare v1 v2 of
-  EQ -> structuralCompare a1 a2
-  r -> r
-structuralCompare (Log _ _ _) _ = LT
-structuralCompare _ (Log _ _ _) = GT
-structuralCompare (Relu _ v1 a1) (Relu _ v2 a2) = case compare v1 v2 of
-  EQ -> structuralCompare a1 a2
-  r -> r
-
 instance Eq a => Eq (ComputationGraph a) where
   eq a b = nodeHash a == nodeHash b && structuralEq a b
 
+-- | NOTE: This Ord instance compares by extracted value (forward pass result),
+-- | NOT by structure. This violates the Ord/Eq consistency law (a == b ⟺ compare a b == EQ)
+-- | since Eq is structure-based for HashMap key usage.
+-- | This is intentional: Ord is used for numerical operations like `max` in softmax,
+-- | which require value-based comparison for numerical stability.
 instance Ord a => Ord (ComputationGraph a) where
-  compare a b = case compare (nodeHash a) (nodeHash b) of
-    EQ -> structuralCompare a b
-    r -> r
+  compare a b = compare (extract a) (extract b)
 
 instance Eq a => Hashable (ComputationGraph a) where
   hash = unwrap <<< nodeHash
