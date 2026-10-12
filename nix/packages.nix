@@ -27,6 +27,8 @@
         ];
       };
 
+      nodejs = pkgs.nodejs_24;
+
       ps = purs-nix.purs {
         dependencies = [
           "aff"
@@ -52,23 +54,11 @@
         ];
 
         dir = ./..;
-      };
 
-      mcpConfig =
-        inputs.mcp-servers-nix.lib.mkConfig
-          (import inputs.mcp-servers-nix.inputs.nixpkgs { inherit system; })
-          {
-            settings.servers = {
-              pursuit-mcp = {
-                command = "nix";
-                args = [
-                  "run"
-                  "github:gawakawa/pursuit-mcp"
-                  "--"
-                ];
-              };
-            };
-          };
+        # Pins the interpreter in the shebang `app` generates to the same
+        # Node.js the devShell and CI use.
+        inherit nodejs;
+      };
 
     in
     {
@@ -77,22 +67,23 @@
           pkgs
           ps
           purs-nix
-          mcpConfig
           ;
         ps-tools = inputs.ps-tools.legacyPackages.${system};
       };
 
-      ciPackages = with pkgs; [ nodejs ];
+      ciPackages = [ nodejs ];
 
-      packages = with ps; {
-        default = app { name = "microgpt"; };
-        bundle = bundle { };
-        output = output { };
+      packages = {
+        default = ps.app { name = "microgpt"; };
         ci = pkgs.buildEnv {
           name = "ci";
           paths = config.ciPackages;
         };
-        mcp-config = mcpConfig;
+      };
+
+      apps.default = {
+        type = "app";
+        program = "${config.packages.default}/bin/microgpt";
       };
     };
 }

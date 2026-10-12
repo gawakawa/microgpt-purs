@@ -2,6 +2,7 @@ module Params where
 
 import Prelude
 
+import ComputationGraph (ComputationGraph, mkVal)
 import Control.Monad.Gen.Class (class MonadGen, chooseFloat)
 import Data.Foldable (class Foldable, foldMap, foldl, foldr)
 import Data.List (List)
@@ -9,7 +10,6 @@ import Data.Newtype (class Newtype)
 import Data.Number as N
 import Data.Traversable (class Traversable, traverse)
 import Data.Unfoldable (replicateA)
-import ComputationGraph (ComputationGraph, mkVal)
 import Matrix (Matrix, Vec(..))
 
 newtype LayerWeights a = LayerWeights
@@ -97,7 +97,8 @@ sampleGauss std = do
   let z = N.sqrt (-2.0 * N.log u1) * N.cos (2.0 * N.pi * u2)
   pure $ z * std
 
-matrix :: forall m. MonadGen m => Int -> Int -> m (Matrix (ComputationGraph Number))
+matrix
+  :: forall m. MonadGen m => Int -> Int -> m (Matrix (ComputationGraph Number))
 matrix nout nin = Vec <$> replicateA nout do
   Vec <$> replicateA nin do
     g <- sampleGauss std
@@ -105,7 +106,15 @@ matrix nout nin = Vec <$> replicateA nout do
   where
   std = 0.08
 
-initParams :: forall m. MonadGen m => Int -> Int -> Int -> Int -> Int -> m (StateDict (ComputationGraph Number))
+initParams
+  :: forall m
+   . MonadGen m
+  => Int
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> m (StateDict (ComputationGraph Number))
 initParams nEmbd nHead nLayer blockSize vocabSize = do
   wte <- matrix vocabSize nEmbd
   wpe <- matrix blockSize nEmbd

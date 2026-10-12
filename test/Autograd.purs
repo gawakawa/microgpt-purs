@@ -3,7 +3,7 @@ module Test.Autograd where
 import Prelude
 
 import Autograd (GradMap, backward)
-import ComputationGraph (mkVal, mkAdd, mkMul, mkPow, mkExp, mkLog, mkRelu)
+import ComputationGraph (mkAdd, mkExp, mkLog, mkMul, mkPow, mkRelu, mkVal)
 import Data.Map as Map
 import Data.Tuple.Nested ((/\))
 import Test.Unit (TestSuite, suite, test)

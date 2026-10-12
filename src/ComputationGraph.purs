@@ -5,19 +5,19 @@ import Prelude
 import Control.Comonad (class Comonad, class Extend, extend, extract)
 import Control.Monad.State (State, evalState, gets, modify_)
 import Data.Array as Array
-import Data.Foldable (class Foldable, foldl, foldMap, foldr)
-import Data.List (List(..), (:))
+import Data.Foldable (class Foldable, foldMap, foldl, foldr)
 import Data.Graph.Weighted (fromEdges)
 import Data.Graph.Weighted.DAG (DAG, unsafeFromWeightedDigraph)
-import Data.Hashable (class Hashable, hash)
 import Data.HashMap (HashMap)
 import Data.HashMap as HashMap
+import Data.Hashable (class Hashable, hash)
 import Data.Int (toNumber)
 import Data.Int.Bits ((.^.))
+import Data.List (List(..), (:))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
 
-class (Ord a, DivisionRing a, EuclideanRing a) <= Differentiable a where
+class (DivisionRing a, EuclideanRing a) <= Differentiable a where
   exp :: a -> a
   log :: a -> a
   pow :: a -> Number -> a
@@ -25,6 +25,8 @@ class (Ord a, DivisionRing a, EuclideanRing a) <= Differentiable a where
   relu :: a -> a
   fromNumber :: Number -> a
   fromInt :: Int -> a
+  -- | Forward-pass result, used to compare values numerically
+  valueOf :: a -> Number
 
 instance Differentiable Number where
   exp = N.exp
@@ -34,6 +36,11 @@ instance Differentiable Number where
   relu = max 0.0
   fromNumber = identity
   fromInt = toNumber
+  valueOf = identity
+
+-- | Larger of two values by forward-pass result.
+maxByValue :: forall a. Differentiable a => a -> a -> a
+maxByValue a b = if valueOf b > valueOf a then b else a
 
 newtype Hash = Hash Int
 
@@ -42,7 +49,7 @@ derive newtype instance Eq Hash
 derive newtype instance Ord Hash
 
 instance Semigroup Hash where
-  append (Hash a) (Hash b) = Hash $ (a * 16777619) .^. b
+  append (Hash a) (Hash b) = Hash $ (a .^. b) * 16777619
 
 data ComputationGraph a
   = Val Hash a
@@ -65,14 +72,21 @@ nodeHash (Relu h _ _) = h
 mkVal :: Number -> ComputationGraph Number
 mkVal v = Val (Hash $ hash v) v
 
-mkAdd :: ComputationGraph Number -> ComputationGraph Number -> ComputationGraph Number
+mkAdd
+  :: ComputationGraph Number
+  -> ComputationGraph Number
+  -> ComputationGraph Number
 mkAdd a b = Add (Hash 1 <> nodeHash a <> nodeHash b) (extract a + extract b) a b
 
-mkMul :: ComputationGraph Number -> ComputationGraph Number -> ComputationGraph Number
+mkMul
+  :: ComputationGraph Number
+  -> ComputationGraph Number
+  -> ComputationGraph Number
 mkMul a b = Mul (Hash 2 <> nodeHash a <> nodeHash b) (extract a * extract b) a b
 
 mkPow :: ComputationGraph Number -> Number -> ComputationGraph Number
-mkPow a n = Pow (Hash 3 <> nodeHash a <> Hash (hash n)) (N.pow (extract a) n) a n
+mkPow a n = Pow (Hash 3 <> nodeHash a <> Hash (hash n)) (N.pow (extract a) n) a
+  n
 
 mkExp :: ComputationGraph Number -> ComputationGraph Number
 mkExp a = Exp (Hash 4 <> nodeHash a) (N.exp $ extract a) a
@@ -83,11 +97,15 @@ mkLog a = Log (Hash 5 <> nodeHash a) (N.log $ extract a) a
 mkRelu :: ComputationGraph Number -> ComputationGraph Number
 mkRelu a = Relu (Hash 6 <> nodeHash a) (max 0.0 $ extract a) a
 
-structuralEq :: forall a. Eq a => ComputationGraph a -> ComputationGraph a -> Boolean
+structuralEq
+  :: forall a. Eq a => ComputationGraph a -> ComputationGraph a -> Boolean
 structuralEq (Val _ v1) (Val _ v2) = v1 == v2
-structuralEq (Add _ v1 a1 b1) (Add _ v2 a2 b2) = v1 == v2 && structuralEq a1 a2 && structuralEq b1 b2
-structuralEq (Mul _ v1 a1 b1) (Mul _ v2 a2 b2) = v1 == v2 && structuralEq a1 a2 && structuralEq b1 b2
-structuralEq (Pow _ v1 a1 n1) (Pow _ v2 a2 n2) = v1 == v2 && n1 == n2 && structuralEq a1 a2
+structuralEq (Add _ v1 a1 b1) (Add _ v2 a2 b2) = v1 == v2 && structuralEq a1 a2
+  && structuralEq b1 b2
+structuralEq (Mul _ v1 a1 b1) (Mul _ v2 a2 b2) = v1 == v2 && structuralEq a1 a2
+  && structuralEq b1 b2
+structuralEq (Pow _ v1 a1 n1) (Pow _ v2 a2 n2) = v1 == v2 && n1 == n2 &&
+  structuralEq a1 a2
 structuralEq (Exp _ v1 a1) (Exp _ v2 a2) = v1 == v2 && structuralEq a1 a2
 structuralEq (Log _ v1 a1) (Log _ v2 a2) = v1 == v2 && structuralEq a1 a2
 structuralEq (Relu _ v1 a1) (Relu _ v2 a2) = v1 == v2 && structuralEq a1 a2
@@ -98,13 +116,11 @@ structuralEq _ _ = false
 instance Eq a => Eq (ComputationGraph a) where
   eq a b = nodeHash a == nodeHash b
 
--- | NOTE: This Ord instance compares by extracted value (forward pass result),
--- | NOT by structure. This violates the Ord/Eq consistency law (a == b ⟺ compare a b == EQ)
--- | since Eq is structure-based for HashMap key usage.
--- | This is intentional: Ord is used for numerical operations like `max` in softmax,
--- | which require value-based comparison for numerical stability.
+-- | Ord is consistent with Eq (hash-based) so nodes can be used as Map/Set keys.
+-- | Distinct nodes with equal forward-pass values must stay distinct keys.
+-- | To compare values numerically, use `maxByValue` / `valueOf`.
 instance Ord a => Ord (ComputationGraph a) where
-  compare a b = compare (extract a) (extract b)
+  compare = comparing nodeHash
 
 instance Eq a => Hashable (ComputationGraph a) where
   hash = unwrap <<< nodeHash
@@ -138,12 +154,16 @@ instance Differentiable (ComputationGraph Number) where
   relu = mkRelu
   fromNumber = mkVal
   fromInt = mkVal <<< toNumber
+  valueOf = extract
 
 instance Show a => Show (ComputationGraph a) where
   show (Val _ v) = "(Val " <> show v <> ")"
-  show (Add _ v a b) = "(Add " <> show v <> " " <> show a <> " " <> show b <> ")"
-  show (Mul _ v a b) = "(Mul " <> show v <> " " <> show a <> " " <> show b <> ")"
-  show (Pow _ v a n) = "(Pow " <> show v <> " " <> show a <> " " <> show n <> ")"
+  show (Add _ v a b) = "(Add " <> show v <> " " <> show a <> " " <> show b <>
+    ")"
+  show (Mul _ v a b) = "(Mul " <> show v <> " " <> show a <> " " <> show b <>
+    ")"
+  show (Pow _ v a n) = "(Pow " <> show v <> " " <> show a <> " " <> show n <>
+    ")"
   show (Exp _ v a) = "(Exp " <> show v <> " " <> show a <> ")"
   show (Log _ v a) = "(Log " <> show v <> " " <> show a <> ")"
   show (Relu _ v a) = "(Relu " <> show v <> " " <> show a <> ")"
@@ -182,7 +202,12 @@ isVal :: forall a. ComputationGraph a -> Boolean
 isVal (Val _ _) = true
 isVal _ = false
 
-type Edge = { source :: ComputationGraph Number, target :: ComputationGraph Number, weight :: Unit }
+type Edge =
+  { source :: ComputationGraph Number
+  , target :: ComputationGraph Number
+  , weight :: Unit
+  }
+
 type Visited = HashMap (ComputationGraph Number) Unit
 
 buildDag :: ComputationGraph Number -> DAG (ComputationGraph Number) Unit
@@ -192,8 +217,8 @@ collectEdges :: ComputationGraph Number -> Array Edge
 collectEdges root = Array.fromFoldable $ evalState (go root Nil) HashMap.empty
   where
   go :: ComputationGraph Number -> List Edge -> State Visited (List Edge)
-  go expr acc = gets (HashMap.member expr) >>= if _
-    then pure acc
+  go expr acc = gets (HashMap.member expr) >>=
+    if _ then pure acc
     else do
       modify_ $ HashMap.insert expr unit
       case expr of

@@ -2,15 +2,16 @@ module Train where
 
 import Prelude
 
+import Autograd (GradMap, backward)
+import ComputationGraph (class Differentiable, ComputationGraph, exp, fromNumber, log, maxByValue, mkVal)
 import Control.Comonad (extract)
 import Data.Array (drop, filter, unsafeIndex, zipWith)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
-import Data.List (List)
-import Data.Unfoldable (replicate)
 import Data.Foldable (class Foldable, foldl, length, sum)
 import Data.FoldableWithIndex (foldWithIndexM, foldlWithIndex)
 import Data.Int (toNumber)
+import Data.List (List)
 import Data.Map (lookup)
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Newtype (unwrap)
@@ -20,13 +21,12 @@ import Data.String (null)
 import Data.Traversable (class Traversable, mapAccumL)
 import Data.Tuple (fst)
 import Data.Tuple.Nested (type (/\), (/\))
-import Partial.Unsafe (unsafePartial)
+import Data.Unfoldable (replicate)
+import GPT (KVCache, gpt)
 import Matrix (Vec(..), fromFoldable)
 import Params (LayerWeights, StateDict(..))
-import GPT (KVCache, gpt)
+import Partial.Unsafe (unsafePartial)
 import Tokenizer (Pos(..), Token(..), tokenize)
-import Autograd (GradMap, backward)
-import ComputationGraph (class Differentiable, ComputationGraph, exp, fromNumber, log, mkVal)
 
 type Logger m = String -> m Unit
 
@@ -47,11 +47,19 @@ unflatten template (Vec vals) = (mapAccumL step vals template).value
 
 -- | Cycle an array to produce exactly n elements
 cycleN :: forall a. Int -> Array a -> Array a
-cycleN n arr = Array.take n $ Array.concat $ replicate ((n `div` Array.length arr) + 1) arr
+cycleN n arr = Array.take n $ Array.concat $ replicate
+  ((n `div` Array.length arr) + 1)
+  arr
 
 -- | Extract gradient values for parameters from a GradMap
-extractGrads :: forall t. Foldable t => t (ComputationGraph Number) -> GradMap -> Vec Number
-extractGrads params gradMap = unsafePartial $ (\param -> fromJust $ lookup param gradMap) <$> flatten params
+extractGrads
+  :: forall t
+   . Foldable t
+  => t (ComputationGraph Number)
+  -> GradMap
+  -> Vec Number
+extractGrads params gradMap = unsafePartial $
+  (\param -> fromJust $ lookup param gradMap) <$> flatten params
 
 type TrainState =
   { params :: StateDict (ComputationGraph Number)
@@ -67,12 +75,23 @@ type TrainState =
 
 -- | Run training loop for numSteps iterations, cycling through the dataset
 train :: forall m. Monad m => Logger m -> TrainState -> m TrainState
-train logger state = foldWithIndexM (trainStep logger) state $ cycleN state.numSteps state.dataset
+train logger state = foldWithIndexM (trainStep logger) state $ cycleN
+  state.numSteps
+  state.dataset
 
 -- | Execute one training step: forward pass, backward pass, and Adam update
-trainStep :: forall m. Monad m => Logger m -> Int -> TrainState -> String -> m TrainState
+trainStep
+  :: forall m
+   . Monad m
+  => Logger m
+  -> Int
+  -> TrainState
+  -> String
+  -> m TrainState
 trainStep logger step state doc = do
-  logger $ "step " <> show (step + 1) <> " / " <> show state.numSteps <> " | loss " <> toStringWith (fixed 3) (extract loss)
+  logger $ "step " <> show (step + 1) <> " / " <> show state.numSteps
+    <> " | loss "
+    <> toStringWith (fixed 3) (extract loss)
   pure $ adamUpdate state step lrT grads
   where
   tokens = tokenize [ doc ]
@@ -82,9 +101,10 @@ trainStep logger step state doc = do
   lrT = state.learningRate * (1.0 - toNumber step / toNumber state.numSteps)
 
 crossEntropyLoss :: forall a. Differentiable a => Vec a -> Int -> a
-crossEntropyLoss (Vec logits) targetIdx = negate $ logit - maxVal - log (sum $ exp <<< (_ - maxVal) <$> logits)
+crossEntropyLoss (Vec logits) targetIdx = negate $ logit - maxVal - log
+  (sum $ exp <<< (_ - maxVal) <$> logits)
   where
-  maxVal = foldl max (fromNumber (-N.infinity)) logits
+  maxVal = foldl maxByValue (fromNumber (-N.infinity)) logits
   logit = unsafePartial $ unsafeIndex logits targetIdx
 
 -- | Create (input, target) pairs for next-token prediction training
@@ -108,8 +128,13 @@ scoreNextToken params headDim pos (lossAcc /\ caches) (tok /\ target) =
     $ gpt params headDim caches tok (Pos pos)
 
 -- | Forward pass: compute total cross-entropy loss over token sequence
-forward :: StateDict (ComputationGraph Number) -> Array Token -> ComputationGraph Number
-forward params tokens = fst $ foldlWithIndex (scoreNextToken params sd.headDim) initialState $ nextTokenPairs tokens
+forward
+  :: StateDict (ComputationGraph Number)
+  -> Array Token
+  -> ComputationGraph Number
+forward params tokens = fst
+  $ foldlWithIndex (scoreNextToken params sd.headDim) initialState
+  $ nextTokenPairs tokens
   where
   sd = unwrap params
   initialState = zero /\ replicate (length sd.layers) mempty
@@ -150,7 +175,12 @@ updateParams lrT eps params { mHat, vHat } = unflatten params flat'
   flat' = (\p u -> mkVal $ extract p - u) <$> flatten params <*> updates
 
 adamUpdate :: TrainState -> Int -> Number -> Vec Number -> TrainState
-adamUpdate state step lrT grads = state { params = params', m = moments.m, v = moments.v }
+adamUpdate state step lrT grads = state
+  { params = params', m = moments.m, v = moments.v }
   where
-  moments = updateMoments { beta1: state.beta1, beta2: state.beta2 } grads { m: state.m, v: state.v }
-  params' = updateParams lrT state.epsAdam state.params <<< biasCorrect { beta1: state.beta1, beta2: state.beta2 } step $ moments
+  moments = updateMoments { beta1: state.beta1, beta2: state.beta2 } grads
+    { m: state.m, v: state.v }
+  params' =
+    updateParams lrT state.epsAdam state.params <<< biasCorrect
+      { beta1: state.beta1, beta2: state.beta2 }
+      step $ moments

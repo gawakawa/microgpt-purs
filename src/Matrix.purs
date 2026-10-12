@@ -21,6 +21,7 @@ derive newtype instance Traversable Vec
 
 instance Apply Vec where
   apply (Vec fs) (Vec xs) = Vec (zipWith ($) fs xs)
+
 derive newtype instance Semigroup (Vec a)
 derive newtype instance Monoid (Vec a)
 

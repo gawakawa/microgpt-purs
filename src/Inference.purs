@@ -47,17 +47,26 @@ predictNextToken params headDim temperature tok pos = do
   lift $ Token <$> sample probs
 
 -- | Generate text that resembles the given dataset using trained weights
-inference :: forall m. MonadGen m => Logger m -> StateDict Number -> Array String -> m String
+inference
+  :: forall m
+   . MonadGen m
+  => Logger m
+  -> StateDict Number
+  -> Array String
+  -> m String
 inference logger params _dataset = do
   logger "--- inference ---"
-  result <- fromCharArray <$> evalStateT (unfoldrM step (bos /\ 0)) (replicate (length sd.layers) mempty)
+  result <- fromCharArray <$> evalStateT (unfoldrM step (bos /\ 0))
+    (replicate (length sd.layers) mempty)
   logger $ "sample: " <> result
   pure result
   where
   sd = unwrap params
   temperature = 0.5
 
-  step :: Token /\ Int -> StateT (List (KVCache Number)) m (Maybe (Char /\ Token /\ Int))
+  step
+    :: Token /\ Int
+    -> StateT (List (KVCache Number)) m (Maybe (Char /\ Token /\ Int))
   step (tok /\ pos) = do
     nextTok <- predictNextToken params sd.headDim temperature tok pos
     pure $ (_ /\ nextTok /\ (pos + 1)) <$> decode nextTok

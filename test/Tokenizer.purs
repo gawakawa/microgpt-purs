@@ -2,9 +2,9 @@ module Test.Tokenizer where
 
 import Prelude
 
+import Data.Maybe (Maybe(..))
 import Test.Unit (TestSuite, suite, test)
 import Test.Unit.Assert as Assert
-import Data.Maybe (Maybe(..))
 import Tokenizer (Token(..), bos, buildVocab, decode, encode, tokenize)
 
 tests :: TestSuite
@@ -29,7 +29,8 @@ tests = do
     test "single doc with multiple chars" do
       Assert.equal (Token <$> [ 26, 0, 1, 26 ]) (tokenize [ "ab" ])
     test "multiple docs" do
-      Assert.equal (Token <$> [ 26, 0, 1, 26, 1, 2, 26 ]) (tokenize [ "ab", "bc" ])
+      Assert.equal (Token <$> [ 26, 0, 1, 26, 1, 2, 26 ])
+        (tokenize [ "ab", "bc" ])
     test "duplicate chars are deduplicated in vocab" do
       Assert.equal (Token <$> [ 26, 0, 0, 1, 26 ]) (tokenize [ "aab" ])
     test "vocab is sorted alphabetically" do
