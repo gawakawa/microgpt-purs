@@ -83,7 +83,7 @@
 
       apps.default = {
         type = "app";
-        program = "${config.packages.default}/bin/app";
+        program = "${config.packages.default}/bin/microgpt";
       };
     };
 }
