@@ -10,6 +10,10 @@ _: {
         statix.enable = true;
         deadnix.enable = true;
         actionlint.enable = true;
+        zizmor = {
+          enable = true;
+          args = [ "--offline" ];
+        };
         workflow-timeout = {
           enable = true;
           name = "Check workflow timeout-minutes";

@@ -2,17 +2,17 @@ module Test.Train where
 
 import Prelude
 
+import ComputationGraph (mkVal)
+import Control.Comonad (extract)
 import Control.Monad.Gen.Trans (Gen, evalGen)
 import Data.Array (length, replicate, sort)
+import Data.Number as N
 import Data.String.Common (joinWith)
+import Data.Tuple.Nested (type (/\), (/\))
+import Matrix (fromFoldable)
 import Random.LCG (mkSeed)
 import Test.Unit (TestSuite, suite, test)
 import Test.Unit.Assert as Assert
-import Data.Tuple.Nested (type (/\), (/\))
-import Control.Comonad (extract)
-import Data.Number as N
-import ComputationGraph (mkVal)
-import Matrix (fromFoldable)
 import Train (crossEntropyLoss, cycleN, initDataset, nextTokenPairs)
 
 runGen :: forall a. Gen a -> a

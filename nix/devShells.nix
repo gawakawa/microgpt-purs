@@ -5,7 +5,6 @@ _: {
       pkgs,
       ps,
       purs-nix,
-      mcpConfig,
       ...
     }:
     let
@@ -14,7 +13,6 @@ _: {
         ++ config.pre-commit.settings.enabledPackages
         ++ [
           (ps.command { })
-          purs-nix.esbuild
           purs-nix.purescript
         ];
     in
@@ -23,8 +21,6 @@ _: {
         buildInputs = devPackages;
         shellHook = ''
           ${config.pre-commit.shellHook}
-          cat ${mcpConfig} > .mcp.json
-          echo "Generated .mcp.json"
         '';
       };
     };
