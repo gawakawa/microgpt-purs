@@ -2,7 +2,7 @@ module GPT where
 
 import Prelude
 
-import ComputationGraph (class Differentiable, exp, fromInt, fromNumber, relu, sqrt)
+import ComputationGraph (class Differentiable, exp, fromInt, fromNumber, maxByValue, relu, sqrt)
 import Control.Monad.State (State, runState)
 import Control.Monad.State.Class (get, modify_)
 import Data.Array (range, unsafeIndex)
@@ -31,7 +31,7 @@ type KVCache a = List { key :: Key a, value :: Value a }
 softmax :: forall a. Differentiable a => Vec a -> Vec a
 softmax logits = (_ / sumExps) <$> exps
   where
-  maxVal = foldl max (fromNumber (-N.infinity)) logits
+  maxVal = foldl maxByValue (fromNumber (-N.infinity)) logits
   exps = (exp <<< (_ - maxVal)) <$> logits
   sumExps = sum exps
 

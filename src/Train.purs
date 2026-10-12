@@ -3,7 +3,7 @@ module Train where
 import Prelude
 
 import Autograd (GradMap, backward)
-import ComputationGraph (class Differentiable, ComputationGraph, exp, fromNumber, log, mkVal)
+import ComputationGraph (class Differentiable, ComputationGraph, exp, fromNumber, log, maxByValue, mkVal)
 import Control.Comonad (extract)
 import Data.Array (drop, filter, unsafeIndex, zipWith)
 import Data.Array as Array
@@ -104,7 +104,7 @@ crossEntropyLoss :: forall a. Differentiable a => Vec a -> Int -> a
 crossEntropyLoss (Vec logits) targetIdx = negate $ logit - maxVal - log
   (sum $ exp <<< (_ - maxVal) <$> logits)
   where
-  maxVal = foldl max (fromNumber (-N.infinity)) logits
+  maxVal = foldl maxByValue (fromNumber (-N.infinity)) logits
   logit = unsafePartial $ unsafeIndex logits targetIdx
 
 -- | Create (input, target) pairs for next-token prediction training

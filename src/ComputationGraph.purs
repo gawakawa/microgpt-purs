@@ -17,7 +17,7 @@ import Data.List (List(..), (:))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Number as N
 
-class (Ord a, DivisionRing a, EuclideanRing a) <= Differentiable a where
+class (DivisionRing a, EuclideanRing a) <= Differentiable a where
   exp :: a -> a
   log :: a -> a
   pow :: a -> Number -> a
@@ -25,6 +25,8 @@ class (Ord a, DivisionRing a, EuclideanRing a) <= Differentiable a where
   relu :: a -> a
   fromNumber :: Number -> a
   fromInt :: Int -> a
+  -- | Forward-pass result, used to compare values numerically
+  valueOf :: a -> Number
 
 instance Differentiable Number where
   exp = N.exp
@@ -34,6 +36,11 @@ instance Differentiable Number where
   relu = max 0.0
   fromNumber = identity
   fromInt = toNumber
+  valueOf = identity
+
+-- | Larger of two values by forward-pass result.
+maxByValue :: forall a. Differentiable a => a -> a -> a
+maxByValue a b = if valueOf b > valueOf a then b else a
 
 newtype Hash = Hash Int
 
@@ -42,7 +49,7 @@ derive newtype instance Eq Hash
 derive newtype instance Ord Hash
 
 instance Semigroup Hash where
-  append (Hash a) (Hash b) = Hash $ (a * 16777619) .^. b
+  append (Hash a) (Hash b) = Hash $ (a .^. b) * 16777619
 
 data ComputationGraph a
   = Val Hash a
@@ -109,13 +116,11 @@ structuralEq _ _ = false
 instance Eq a => Eq (ComputationGraph a) where
   eq a b = nodeHash a == nodeHash b
 
--- | NOTE: This Ord instance compares by extracted value (forward pass result),
--- | NOT by structure. This violates the Ord/Eq consistency law (a == b ⟺ compare a b == EQ)
--- | since Eq is structure-based for HashMap key usage.
--- | This is intentional: Ord is used for numerical operations like `max` in softmax,
--- | which require value-based comparison for numerical stability.
+-- | Ord is consistent with Eq (hash-based) so nodes can be used as Map/Set keys.
+-- | Distinct nodes with equal forward-pass values must stay distinct keys.
+-- | To compare values numerically, use `maxByValue` / `valueOf`.
 instance Ord a => Ord (ComputationGraph a) where
-  compare a b = compare (extract a) (extract b)
+  compare = comparing nodeHash
 
 instance Eq a => Hashable (ComputationGraph a) where
   hash = unwrap <<< nodeHash
@@ -149,6 +154,7 @@ instance Differentiable (ComputationGraph Number) where
   relu = mkRelu
   fromNumber = mkVal
   fromInt = mkVal <<< toNumber
+  valueOf = extract
 
 instance Show a => Show (ComputationGraph a) where
   show (Val _ v) = "(Val " <> show v <> ")"
